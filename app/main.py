@@ -26,9 +26,14 @@ def run():
             folder = message_folder(Config.download_dir, index, sender, subject)
             downloaded = gmail.save_attachments(message_id, message, folder)
             for url in gmail.extract_links(message):
-                print(f"LINK DETECTADO -> {repr(url)}")
-                path = download_url(url, folder)
-                if path: downloaded.append(path)
+            print("=" * 80)
+            print(f"URL EXTRAÍDA: {repr(url)}")
+            print("=" * 80)
+
+            path = download_url(url, folder)
+
+            if path:
+            downloaded.append(path)
             if not downloaded:
                 print("Sin archivos; correo pendiente"); continue
             for path in downloaded: drive.upload_file(path)
