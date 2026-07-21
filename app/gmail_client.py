@@ -88,7 +88,15 @@ class GmailClient:
                 return None
 
             # Protección adicional para dominios deformados.
-            hostname = (parts.hostname or "").rstrip("_")
+            hostname = (parts.hostname or "").lower().strip()
+
+            # Corrige dominios deformados por el formato del correo:
+            # sendgb.com__-  -> sendgb.com
+            # wetransfer.com__- -> wetransfer.com
+            hostname = re.sub(r"[_-]+$", "", hostname)
+
+            # Elimina puntos sobrantes al final.
+            hostname = hostname.rstrip(".")
 
             if not hostname or "." not in hostname:
                 return None
