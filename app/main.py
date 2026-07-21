@@ -21,6 +21,7 @@ def message_folder(base, index, sender, subject):
 
 
 def run():
+    print("VERSION_APP: V2-ROOTFIX-2026-07-21-01")
     Config.validate()
     Config.download_dir.mkdir(parents=True, exist_ok=True)
 
