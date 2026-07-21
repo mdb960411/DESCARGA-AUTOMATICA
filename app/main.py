@@ -26,6 +26,7 @@ def run():
             folder = message_folder(Config.download_dir, index, sender, subject)
             downloaded = gmail.save_attachments(message_id, message, folder)
             for url in gmail.extract_links(message):
+                print(f"LINK DETECTADO -> {repr(url)}")
                 path = download_url(url, folder)
                 if path: downloaded.append(path)
             if not downloaded:
