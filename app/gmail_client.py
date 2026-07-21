@@ -56,14 +56,81 @@ class GmailClient:
         return True
 
     def extract_links(self, message):
-        import re
-        text, html = self.extract_body(message)
-        links = set()
-        if html:
-            for a in BeautifulSoup(html, "html.parser").find_all("a", href=True):
-                if a["href"].strip().startswith("http"): links.add(a["href"].strip())
-        for m in re.findall(r'https?://[^\s<>"]+', text or "", re.I): links.add(m.rstrip(").,;"))
-        return sorted(links)
+    import html as html_module
+    import re
+    from urllib.parse import urlsplit, urlunsplit
+
+    text, html_body = self.extract_body(message)
+    links = set()
+
+    def clean_url(raw_url):
+        if not raw_url:
+            return None
+
+        url = html_module.unescape(raw_url).strip()
+
+        # Elimina caracteres habituales que quedan pegados al enlace
+        # en correos en texto plano o con formato Markdown.
+        url = url.strip(' \t\r\n<>"\'')
+        url = url.rstrip(").,;:!?]}")
+
+        # Algunos correos rodean los enlaces con __texto__.
+        # Solo eliminamos guiones bajos ubicados al final de la URL.
+        url = re.sub(r"_+$", "", url)
+
+        if not url.lower().startswith(("http://", "https://")):
+            return None
+
+        try:
+            parts = urlsplit(url)
+
+            if not parts.netloc:
+                return None
+
+            # Protección adicional para dominios deformados.
+            hostname = (parts.hostname or "").rstrip("_")
+
+            if not hostname or "." not in hostname:
+                return None
+
+            netloc = hostname
+
+            if parts.port:
+                netloc = f"{netloc}:{parts.port}"
+
+            url = urlunsplit(
+                (
+                    parts.scheme,
+                    netloc,
+                    parts.path,
+                    parts.query,
+                    parts.fragment,
+                )
+            )
+
+            return url
+
+        except Exception:
+            return None
+
+    # Enlaces reales incluidos en botones o texto HTML.
+    if html_body:
+        soup = BeautifulSoup(html_body, "html.parser")
+
+        for anchor in soup.find_all("a", href=True):
+            cleaned = clean_url(anchor.get("href"))
+
+            if cleaned:
+                links.add(cleaned)
+
+    # Enlaces visibles dentro del cuerpo de texto.
+    for match in re.findall(r'https?://[^\s<>"]+', text or "", re.I):
+        cleaned = clean_url(match)
+
+        if cleaned:
+            links.add(cleaned)
+
+    return sorted(links)
 
     def save_attachments(self, message_id, message, target_dir):
         saved = []
