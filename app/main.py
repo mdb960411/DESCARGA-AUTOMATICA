@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from app.config import Config
 from app.downloaders import download_url
+from app.downloaders.filters import should_ignore_url
 from app.drive_client import DriveClient
 from app.gmail_client import GmailClient
 from app.google_auth import get_credentials
@@ -55,7 +56,14 @@ def run():
             print(f"[CORREO] Enlaces útiles detectados: {len(links)}")
 
             for url in links:
+                ignore, reason = should_ignore_url(url)
+
+                if ignore:
+                   print(f"[IGNORADO] {reason}: {url}")
+                   continue
+
                 path = download_url(url, folder)
+
                 if path:
                     downloaded.append(path)
 
