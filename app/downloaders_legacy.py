@@ -6,6 +6,7 @@ from urllib.parse import unquote, urlparse
 import requests
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
+from app.downloaders.smart_browser import try_smart_download
 
 from app.config import Config
 from app.utils import extension_allowed, safe_filename, unique_path
@@ -191,11 +192,27 @@ def download_with_browser(url, target_dir, provider, download_selectors):
                 except Exception:
                     continue
 
+            print(f"[{provider}] Iniciando Smart Browser...")
+
+            download = try_smart_download(
+                page,
+                provider,
+                download_selectors,
+)
+
+            if download:
+               result = _save_playwright_download(
+                   download,
+                   target_dir,
+                   provider,
+    )
+    browser.close()
+    return result
+
             print(f"[{provider}] No se encontró un botón que iniciara descarga. URL final: {page.url}")
+
             browser.close()
-    except Exception as exc:
-        print(f"[{provider}] Error: {exc}")
-    return None
+            return None
 
 
 def download_sendgb(url, target_dir):
