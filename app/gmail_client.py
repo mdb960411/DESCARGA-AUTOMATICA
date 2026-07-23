@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 from googleapiclient.discovery import build
 
 from app.config import Config
+from app.link_utils import canonical_link_key
 from app.utils import decode_base64url, extension_allowed, safe_filename, unique_path
 
 
@@ -24,6 +25,8 @@ class GmailClient:
         excluded_labels = [Config.processed_label]
         if Config.exclude_error_messages:
             excluded_labels.append(Config.error_label)
+        if Config.exclude_ignored_messages:
+            excluded_labels.append(Config.ignored_label)
 
         normalized_query = query.lower()
         for label in excluded_labels:
@@ -224,8 +227,18 @@ class GmailClient:
             if cleaned and self._is_useful_link(cleaned):
                 links.add(cleaned)
 
-        # Prefer shorter canonical URLs first; this also avoids tracking-heavy duplicates.
-        return sorted(links, key=lambda item: (len(item), item))
+        # Prefiere las URL canónicas cortas y evita probar varias variantes del
+        # mismo envío de WeTransfer.
+        ordered_links = sorted(links, key=lambda item: (len(item), item))
+        deduplicated = []
+        seen_keys = set()
+        for link in ordered_links:
+            key = canonical_link_key(link)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deduplicated.append(link)
+        return deduplicated
 
     def save_attachments(self, message_id, message, target_dir):
         saved = []
@@ -295,6 +308,7 @@ class GmailClient:
             Config.processed_label,
             Config.error_label,
             Config.partial_label,
+            Config.ignored_label,
         ):
             self.label_id(name, create=True)
 
@@ -334,7 +348,11 @@ class GmailClient:
         self._modify_status(
             message_id,
             add_labels=[Config.processed_label],
-            remove_labels=[Config.error_label, Config.partial_label],
+            remove_labels=[
+                Config.error_label,
+                Config.partial_label,
+                Config.ignored_label,
+            ],
             mark_as_read=Config.mark_as_read,
         )
 
@@ -346,6 +364,20 @@ class GmailClient:
         self._modify_status(
             message_id,
             add_labels=add_labels,
-            remove_labels=[Config.processed_label],
+            remove_labels=[Config.processed_label, Config.ignored_label],
+            mark_as_read=False,
+        )
+
+    def mark_ignored(self, message_id):
+        self._modify_status(
+            message_id,
+            add_labels=[Config.ignored_label],
+            remove_labels=[
+                Config.processed_label,
+                Config.error_label,
+                Config.partial_label,
+            ],
+            # Un correo personal sin archivos no debe marcarse como leído por
+            # una automatización destinada únicamente a transferencias.
             mark_as_read=False,
         )

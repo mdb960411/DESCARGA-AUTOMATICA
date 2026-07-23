@@ -60,13 +60,16 @@ def download_sendallfiles(url, target_dir):
         target_dir,
         "SENDALLFILES",
         [
-            "button:has-text('Download')",
             "button:has-text('Descargar')",
-            "a:has-text('Download')",
+            "button:has-text('Download')",
             "a:has-text('Descargar')",
+            "a:has-text('Download')",
             "a[download]",
         ],
+        download_all=True,
+        wait_for_download_controls_seconds=60,
     )
+
 
 def download_swisstransfer(url, target_dir):
     return download_with_browser(
@@ -89,4 +92,3 @@ def download_swisstransfer(url, target_dir):
             "a[download]",
         ],
     )
-

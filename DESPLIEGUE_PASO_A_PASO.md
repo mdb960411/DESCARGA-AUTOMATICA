@@ -1,4 +1,4 @@
-# Despliegue paso a paso
+# Despliegue paso a paso — V4.1
 
 Configuración preparada para:
 
@@ -17,8 +17,9 @@ Configuración preparada para:
 
 ## 2. Subir esta versión a GitHub
 
-Reemplaza el contenido del repositorio con esta versión, sin copiar archivos
-locales de credenciales. Comprueba que GitHub contenga:
+No elimines el repositorio ni su configuración. Sube el contenido de esta
+versión sobre los archivos existentes, sin copiar credenciales locales.
+Comprueba que GitHub contenga:
 
 - `app/`
 - `Dockerfile`
@@ -63,6 +64,8 @@ BROWSER_HTTP_HANDOFF=true
 EXCLUDE_ERROR_MESSAGES=true
 ERROR_LABEL=Descarga-Automatica-Error
 PARTIAL_LABEL=Descarga-Automatica-Parcial
+IGNORED_LABEL=Descarga-Automatica-Ignorado
+EXCLUDE_IGNORED_MESSAGES=true
 ```
 
 Configura `ALLOWED_EXTENSIONS` con:
@@ -110,7 +113,7 @@ inmediato**.
 3. Revisa que el log comience con:
 
    ```text
-   VERSION_APP: V4-GRAPHIC-LARGE-FILES-2026-07-23
+   VERSION_APP: V4.1-MULTIFILE-2026-07-23
    ```
 
 4. Para SendGB, el log esperado incluye:
@@ -127,7 +130,28 @@ inmediato**.
 6. Comprueba que el bucket quede vacío después del correo.
 7. Si todo funciona, restaura `MAX_EMAILS=20`.
 
-## 8. Reintentar un correo con error
+## 8. Prueba específica de SendAllFiles
+
+1. Conserva el correo válido que contiene `LINK 4.zip` y `LINK 2.zip`.
+2. En Gmail, elimina de ese correo la etiqueta
+   `Descarga-Automatica-Error`.
+3. Déjalo como no leído.
+4. Ejecuta el job.
+5. El log esperado debe incluir:
+
+   ```text
+   [SENDALLFILES] Controles de descarga detectados: 2
+   [SENDALLFILES] Iniciando archivo 1 de 2
+   [SENDALLFILES] Iniciando archivo 2 de 2
+   ```
+
+6. Confirma que ambos archivos aparecen en Google Drive.
+
+No reintentes los enlaces de WeTransfer o TransferNow ya caducados; la
+aplicación los mantendrá en estado de error y mostrará el motivo cuando la
+página del proveedor lo exponga.
+
+## 9. Reintentar un correo con error
 
 1. Abre Gmail.
 2. Busca la etiqueta `Descarga-Automatica-Error`.
@@ -136,7 +160,18 @@ inmediato**.
 5. Déjalo como no leído.
 6. Ejecuta nuevamente el job.
 
-## 9. Volver a la versión anterior
+## 10. Correos sin archivos
+
+La V4.1 crea automáticamente la etiqueta
+`Descarga-Automatica-Ignorado`. Un correo sin adjuntos o enlaces útiles:
+
+- no se considera error;
+- no vuelve a procesarse;
+- permanece sin leer.
+
+Para volver a evaluarlo, elimina esa etiqueta.
+
+## 11. Volver a la versión anterior
 
 Si la prueba falla antes de procesar correos, edita el job y vuelve a seleccionar
 la imagen anterior. Conserva el bucket; no interfiere con la versión anterior

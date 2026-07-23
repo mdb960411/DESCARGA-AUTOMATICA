@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from app.downloaders.direct import download_direct
+from app.utils import url_for_log
 
 
 def drive_direct_url(url):
@@ -21,6 +22,9 @@ def drive_direct_url(url):
 def download_drive(url, target_dir):
     direct_url = drive_direct_url(url)
     if not direct_url:
-        print(f"[DRIVE] No se pudo obtener el ID del archivo: {url}")
+        print(
+            "[DRIVE] No se pudo obtener el ID del archivo: "
+            f"{url_for_log(url)}"
+        )
         return None
     return download_direct(direct_url, target_dir)

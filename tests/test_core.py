@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 
 from app.config import Config
+from app.download_result import DownloadResult
+from app.link_utils import canonical_link_key
 from app.utils import safe_filename, url_for_log
 
 
@@ -43,6 +45,43 @@ class CoreTests(unittest.TestCase):
 
     def test_graphic_filename_is_sanitized(self):
         self.assertEqual(safe_filename("arte:final.ai"), "arte_final.ai")
+
+    def test_download_result_supports_multiple_files(self):
+        result = DownloadResult.from_value(
+            [Path("LINK 4.zip"), Path("LINK 2.zip")],
+            default_error="error",
+        )
+        self.assertEqual(
+            [path.name for path in result.paths],
+            ["LINK 4.zip", "LINK 2.zip"],
+        )
+        self.assertEqual(result.errors, [])
+
+    def test_empty_download_result_has_an_error(self):
+        result = DownloadResult.from_value(
+            None,
+            default_error="La descarga no se completó",
+        )
+        self.assertEqual(result.paths, [])
+        self.assertEqual(
+            result.errors,
+            ["La descarga no se completó"],
+        )
+
+    def test_wetransfer_variants_share_a_canonical_key(self):
+        first = canonical_link_key(
+            "https://wetransfer.com/downloads/transfer123/secret456/file-a"
+        )
+        second = canonical_link_key(
+            "https://wetransfer.com/downloads/transfer123/secret456/file-b?utm=1"
+        )
+        self.assertEqual(first, second)
+
+    def test_ignored_email_label_is_configured(self):
+        self.assertEqual(
+            Config.ignored_label,
+            "Descarga-Automatica-Ignorado",
+        )
 
 
 if __name__ == "__main__":

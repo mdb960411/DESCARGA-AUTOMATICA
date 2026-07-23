@@ -41,12 +41,13 @@ def create_execution_folder():
 
 
 def run():
-    print("VERSION_APP: V4-GRAPHIC-LARGE-FILES-2026-07-23")
+    print("VERSION_APP: V4.1-MULTIFILE-2026-07-23")
     Config.validate()
     execution_folder = create_execution_folder()
     summary = {
         "messages_found": 0,
         "messages_processed": 0,
+        "messages_ignored": 0,
         "messages_partial": 0,
         "messages_failed": 0,
         "files_downloaded": 0,
@@ -76,7 +77,9 @@ def run():
                 print(f"[CORREO] {sender} | {subject}")
 
                 if not gmail.matches_rules(message):
-                    print("[CORREO] Omitido por reglas")
+                    gmail.mark_ignored(message_id)
+                    summary["messages_ignored"] += 1
+                    print("[CORREO] Estado=IGNORADO. No cumple las reglas")
                     continue
 
                 folder = message_folder(
@@ -101,13 +104,24 @@ def run():
                         continue
 
                     attempted_links += 1
-                    path = download_url(url, folder)
+                    result = download_url(url, folder)
+                    downloaded.extend(result.paths)
 
-                    if path:
-                        downloaded.append(path)
-                    else:
+                    if result.errors:
+                        normalized_errors = [
+                            safe_error_message(error)
+                            for error in result.errors
+                        ]
+                        visible_errors = normalized_errors[:5]
+                        if len(normalized_errors) > len(visible_errors):
+                            visible_errors.append(
+                                f"{len(normalized_errors) - len(visible_errors)} "
+                                "errores adicionales"
+                            )
+                        details = "; ".join(visible_errors)
                         failure = (
                             f"{provider_for(url)}:{url_for_log(url)}"
+                            f" ({details})"
                         )
                         link_failures.append(failure)
                         summary["links_failed"] += 1
@@ -133,9 +147,13 @@ def run():
                 ]
 
                 if not downloaded and attempted_links == 0:
-                    failures.append(
-                        "El correo no contenía adjuntos o enlaces descargables"
+                    gmail.mark_ignored(message_id)
+                    summary["messages_ignored"] += 1
+                    print(
+                        "[CORREO] Estado=IGNORADO. "
+                        "No contiene adjuntos o enlaces descargables"
                     )
+                    continue
 
                 if failures:
                     partial = completed_files > 0

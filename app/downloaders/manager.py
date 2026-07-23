@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+from app.download_result import DownloadResult
 from app.downloaders.direct import download_direct
 from app.downloaders.drive import download_drive
 from app.downloaders.providers import (
@@ -44,4 +45,8 @@ def download_url(url, target_dir):
         "drive": download_drive,
         "direct": download_direct,
     }
-    return handlers[provider](url, target_dir)
+    raw_result = handlers[provider](url, target_dir)
+    return DownloadResult.from_value(
+        raw_result,
+        default_error="La descarga no se completó",
+    )
