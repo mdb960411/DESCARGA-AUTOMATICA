@@ -6,14 +6,8 @@ from urllib.parse import urlparse
 
 BLOCKED_EXTENSIONS = {
     ".css",
-    ".gif",
     ".ico",
-    ".jpeg",
-    ".jpg",
     ".js",
-    ".png",
-    ".svg",
-    ".webp",
     ".woff",
     ".woff2",
 }
@@ -32,11 +26,14 @@ BLOCKED_DOMAINS = {
 }
 
 BLOCKED_KEYWORDS = {
+    "/images/mail/",
     "about",
     "banner",
+    "border",
     "cookie",
     "faq",
     "font",
+    "icon_",
     "logo",
     "pixel",
     "privacy",

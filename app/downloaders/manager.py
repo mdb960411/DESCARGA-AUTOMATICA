@@ -11,6 +11,7 @@ from app.downloaders.providers import (
     download_transfernow,
     download_wetransfer,
 )
+from app.utils import url_for_log
 
 
 def provider_for(url):
@@ -32,7 +33,7 @@ def provider_for(url):
 
 def download_url(url, target_dir):
     provider = provider_for(url)
-    print(f"[ENLACE] Proveedor={provider} URL={url}")
+    print(f"[ENLACE] Proveedor={provider} URL={url_for_log(url)}")
 
     handlers = {
         "wetransfer": download_wetransfer,

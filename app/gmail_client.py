@@ -14,11 +14,26 @@ from app.utils import decode_base64url, extension_allowed, safe_filename, unique
 class GmailClient:
     def __init__(self, credentials):
         self.service = build("gmail", "v1", credentials=credentials, cache_discovery=False)
+        self._label_cache = None
 
     def list_message_ids(self):
+        query = Config.gmail_query.strip()
+
+        # Las exclusiones evitan reprocesar mensajes ya finalizados y detienen
+        # ciclos infinitos sobre enlaces vencidos o incompatibles.
+        excluded_labels = [Config.processed_label]
+        if Config.exclude_error_messages:
+            excluded_labels.append(Config.error_label)
+
+        normalized_query = query.lower()
+        for label in excluded_labels:
+            if label and label.lower() not in normalized_query:
+                query = f'{query} -label:"{label}"'.strip()
+
+        print(f"[GMAIL] Consulta activa: {query}")
         response = self.service.users().messages().list(
             userId="me",
-            q=Config.gmail_query,
+            q=query,
             maxResults=Config.max_emails,
         ).execute()
         return [item["id"] for item in response.get("messages", [])]
@@ -138,7 +153,16 @@ class GmailClient:
         if host.endswith("wetransfer.com"):
             return path.startswith("/downloads/")
         if host.endswith("sendgb.com"):
-            return path.strip("/") != ""
+            blocked_prefixes = (
+                "/images/",
+                "/css/",
+                "/js/",
+                "/assets/",
+            )
+            return (
+                path.strip("/") != ""
+                and not path.lower().startswith(blocked_prefixes)
+            )
         if host.endswith("sendallfiles.com"):
             return "/d/" in path
         if host.endswith("transfernow.net"):
@@ -233,24 +257,95 @@ class GmailClient:
             print(f"Adjunto guardado: {destination}")
         return saved
 
-    def get_or_create_label(self, name):
-        labels = self.service.users().labels().list(userId="me").execute().get("labels", [])
-        for label in labels:
-            if label.get("name", "").lower() == name.lower():
-                return label["id"]
-        return self.service.users().labels().create(
+    def _load_label_cache(self, force=False):
+        if self._label_cache is None or force:
+            labels = (
+                self.service.users()
+                .labels()
+                .list(userId="me")
+                .execute()
+                .get("labels", [])
+            )
+            self._label_cache = {
+                label.get("name", "").lower(): label["id"]
+                for label in labels
+                if label.get("name") and label.get("id")
+            }
+        return self._label_cache
+
+    def label_id(self, name, create=False):
+        cache = self._load_label_cache()
+        label_id = cache.get(name.lower())
+        if label_id or not create:
+            return label_id
+
+        created = self.service.users().labels().create(
             userId="me",
             body={
                 "name": name,
                 "labelListVisibility": "labelShow",
                 "messageListVisibility": "show",
             },
-        ).execute()["id"]
+        ).execute()
+        self._label_cache[name.lower()] = created["id"]
+        return created["id"]
 
-    def mark_processed(self, message_id):
-        body = {"addLabelIds": [self.get_or_create_label(Config.processed_label)]}
-        if Config.mark_as_read:
-            body["removeLabelIds"] = ["UNREAD"]
+    def ensure_status_labels(self):
+        for name in (
+            Config.processed_label,
+            Config.error_label,
+            Config.partial_label,
+        ):
+            self.label_id(name, create=True)
+
+    def _modify_status(
+        self,
+        message_id,
+        *,
+        add_labels,
+        remove_labels=(),
+        mark_as_read=False,
+    ):
+        add_ids = [
+            self.label_id(name, create=True)
+            for name in add_labels
+            if name
+        ]
+        remove_ids = [
+            label_id
+            for name in remove_labels
+            if name
+            for label_id in [self.label_id(name, create=False)]
+            if label_id
+        ]
+
+        if mark_as_read:
+            remove_ids.append("UNREAD")
+
+        body = {"addLabelIds": list(dict.fromkeys(add_ids))}
+        if remove_ids:
+            body["removeLabelIds"] = list(dict.fromkeys(remove_ids))
+
         self.service.users().messages().modify(
             userId="me", id=message_id, body=body
         ).execute()
+
+    def mark_processed(self, message_id):
+        self._modify_status(
+            message_id,
+            add_labels=[Config.processed_label],
+            remove_labels=[Config.error_label, Config.partial_label],
+            mark_as_read=Config.mark_as_read,
+        )
+
+    def mark_failed(self, message_id, partial=False):
+        add_labels = [Config.error_label]
+        if partial:
+            add_labels.append(Config.partial_label)
+
+        self._modify_status(
+            message_id,
+            add_labels=add_labels,
+            remove_labels=[Config.processed_label],
+            mark_as_read=False,
+        )

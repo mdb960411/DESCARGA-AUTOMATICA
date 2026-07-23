@@ -21,9 +21,26 @@ def save_playwright_download(download, target_dir: Path, provider: str):
         return None
 
     destination = unique_path(Path(target_dir) / suggested)
-    download.save_as(str(destination))
-    print(f"[{provider}] Descargado: {destination}")
-    return destination
+    try:
+        download.save_as(str(destination))
+        size = destination.stat().st_size
+
+        if size > Config.max_file_size_bytes():
+            destination.unlink(missing_ok=True)
+            print(
+                f"[{provider}] Archivo rechazado por tamaño: "
+                f"{size / (1024 ** 3):.2f} GiB"
+            )
+            return None
+
+        print(
+            f"[{provider}] Descargado: {destination.name} "
+            f"({size / (1024 ** 2):.1f} MiB)"
+        )
+        return destination
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
 
 
 def click_if_visible(page, selectors) -> bool:
