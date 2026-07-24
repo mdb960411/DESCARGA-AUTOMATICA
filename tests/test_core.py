@@ -2,6 +2,11 @@ import importlib.util
 import unittest
 from pathlib import Path
 
+from app.browser_profile import (
+    USER_AGENT,
+    browser_context_options,
+    browser_launch_arguments,
+)
 from app.config import Config
 from app.download_result import DownloadResult
 from app.link_utils import canonical_link_key
@@ -82,6 +87,22 @@ class CoreTests(unittest.TestCase):
             Config.ignored_label,
             "Descarga-Automatica-Ignorado",
         )
+
+    def test_compatibility_profile_uses_native_browser_features(self):
+        options = browser_context_options(compatibility_mode=True)
+        arguments = browser_launch_arguments(compatibility_mode=True)
+
+        self.assertEqual(options["service_workers"], "allow")
+        self.assertNotIn("user_agent", options)
+        self.assertNotIn("--disable-background-networking", arguments)
+
+    def test_optimized_profile_keeps_existing_oom_guards(self):
+        options = browser_context_options(compatibility_mode=False)
+        arguments = browser_launch_arguments(compatibility_mode=False)
+
+        self.assertEqual(options["service_workers"], "block")
+        self.assertEqual(options["user_agent"], USER_AGENT)
+        self.assertIn("--renderer-process-limit=2", arguments)
 
 
 if __name__ == "__main__":

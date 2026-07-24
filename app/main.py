@@ -41,7 +41,7 @@ def create_execution_folder():
 
 
 def run():
-    print("VERSION_APP: V4.1-MULTIFILE-2026-07-23")
+    print("VERSION_APP: V4.2-SENDALLFILES-COMPAT-2026-07-24")
     Config.validate()
     execution_folder = create_execution_folder()
     summary = {

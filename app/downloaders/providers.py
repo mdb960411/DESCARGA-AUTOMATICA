@@ -60,14 +60,28 @@ def download_sendallfiles(url, target_dir):
         target_dir,
         "SENDALLFILES",
         [
+            "button:text-is('Descargar')",
             "button:has-text('Descargar')",
+            "[role='button']:text-is('Descargar')",
+            "[role='button']:has-text('Descargar')",
+            "a:text-is('Descargar')",
+            "button:text-is('Download')",
             "button:has-text('Download')",
+            "[role='button']:text-is('Download')",
+            "[role='button']:has-text('Download')",
             "a:has-text('Descargar')",
             "a:has-text('Download')",
+            "input[type='button'][value='Descargar']",
+            "input[type='submit'][value='Descargar']",
             "a[download]",
         ],
         download_all=True,
         wait_for_download_controls_seconds=60,
+        compatibility_mode=True,
+        search_all_frames=True,
+        # Conserva la sesión validada por Cloudflare mientras Chromium escribe
+        # directamente en el volumen externo montado.
+        allow_http_handoff=False,
     )
 
 

@@ -1,5 +1,20 @@
 # Historial de cambios
 
+## V4.2 — Compatibilidad reforzada con SendAllFiles
+
+- User-Agent nativo de Chromium para SendAllFiles.
+- Service Workers habilitados únicamente para ese proveedor.
+- Perfil con menos restricciones de red para su aplicación dinámica.
+- Búsqueda de botones de descarga en todos los marcos de la página.
+- Selectores exactos y accesibles adicionales.
+- Descarga nativa sobre el volumen montado para conservar la sesión de
+  Cloudflare.
+- Captura de solicitudes originadas por Service Workers.
+- User-Agent real conservado en transferencias HTTP del resto de proveedores.
+- Diagnóstico seguro de marcos, controles visibles, Service Workers y
+  Turnstile.
+- Nueva firma `V4.2-SENDALLFILES-COMPAT-2026-07-24`.
+
 ## V4.1 — SendAllFiles multarchivo y estados precisos
 
 - Espera de hasta 60 segundos para la carga dinámica de SendAllFiles.

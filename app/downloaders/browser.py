@@ -8,10 +8,14 @@ from time import monotonic
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
+from app.browser_profile import (
+    USER_AGENT,
+    browser_context_options,
+    browser_launch_arguments,
+)
 from app.config import Config
 from app.download_result import DownloadResult
 from app.downloaders.common import (
-    USER_AGENT,
     click_if_visible,
     save_playwright_download,
 )
@@ -53,6 +57,7 @@ class HttpDownloadHandoff:
     filename: str
     referer: str
     cookies: list[dict]
+    user_agent: str
     method: str = "GET"
     request_body: str | None = None
     headers: dict | None = None
@@ -107,8 +112,9 @@ def _create_http_handoff(
     context,
     provider,
     request_records,
+    allow_http_handoff,
 ):
-    if not Config.browser_http_handoff:
+    if not Config.browser_http_handoff or not allow_http_handoff:
         return None
 
     download_url = download.url
@@ -117,11 +123,17 @@ def _create_http_handoff(
 
     filename = download.suggested_filename or f"{provider.lower()}_download.bin"
     request_details = request_records.get(download_url, {})
+    try:
+        browser_user_agent = page.evaluate("() => navigator.userAgent")
+    except Exception:
+        browser_user_agent = USER_AGENT
+
     handoff = HttpDownloadHandoff(
         url=download_url,
         filename=filename,
         referer=page.url,
         cookies=context.cookies(),
+        user_agent=browser_user_agent,
         method=request_details.get("method", "GET"),
         request_body=request_details.get("request_body"),
         headers=request_details.get("headers"),
@@ -141,9 +153,9 @@ def _create_http_handoff(
     return handoff
 
 
-def _visible_indices(page, selector):
+def _visible_indices(root, selector):
     try:
-        locator = page.locator(selector)
+        locator = root.locator(selector)
         count = min(locator.count(), MAX_MULTI_DOWNLOAD_CONTROLS)
     except Exception:
         return []
@@ -158,21 +170,150 @@ def _visible_indices(page, selector):
     return indices
 
 
-def _wait_for_download_controls(page, selectors, wait_seconds):
+def _browser_roots(page, search_all_frames):
+    if not search_all_frames:
+        return [("principal", page)]
+
+    roots = [("principal", page.main_frame)]
+    for index, frame in enumerate(page.frames, 1):
+        if frame == page.main_frame:
+            continue
+        roots.append((f"marco-{index}", frame))
+    return roots
+
+
+def _click_consent(page, search_all_frames):
+    for _, root in _browser_roots(page, search_all_frames):
+        if click_if_visible(root, CONSENT_SELECTORS):
+            return True
+    return False
+
+
+def _wait_for_download_controls(
+    page,
+    selectors,
+    wait_seconds,
+    *,
+    search_all_frames=False,
+    provider="NAVEGADOR",
+):
+    started_at = monotonic()
     deadline = monotonic() + max(0, wait_seconds)
+    next_progress_log = 15
 
     while True:
-        click_if_visible(page, CONSENT_SELECTORS)
+        _click_consent(page, search_all_frames)
 
-        for selector in selectors:
-            indices = _visible_indices(page, selector)
-            if indices:
-                return selector, indices
+        for root_name, root in _browser_roots(page, search_all_frames):
+            for selector in selectors:
+                indices = _visible_indices(root, selector)
+                if indices:
+                    return root_name, root, selector, indices
 
         if monotonic() >= deadline:
-            return None, []
+            return None, None, None, []
+
+        elapsed = int(monotonic() - started_at)
+        if elapsed >= next_progress_log:
+            print(
+                f"[{provider}] Esperando interfaz dinámica: "
+                f"{elapsed}s de {wait_seconds}s"
+            )
+            next_progress_log += 15
 
         page.wait_for_timeout(1_000)
+
+
+def _count_visible(root, selector, limit=100):
+    try:
+        locator = root.locator(selector)
+        count = min(locator.count(), limit)
+    except Exception:
+        return 0
+
+    visible = 0
+    for index in range(count):
+        try:
+            if locator.nth(index).is_visible(timeout=250):
+                visible += 1
+        except Exception:
+            continue
+    return visible
+
+
+def _turnstile_status(page):
+    widget_count = 0
+    response_found = False
+    response_ready = False
+
+    for _, root in _browser_roots(page, search_all_frames=True):
+        try:
+            widget_count += root.locator(
+                "iframe[src*='challenges.cloudflare.com'], "
+                "iframe[title*='Cloudflare']"
+            ).count()
+        except Exception:
+            pass
+
+        try:
+            responses = root.locator(
+                "input[name='cf-turnstile-response'], "
+                "textarea[name='cf-turnstile-response']"
+            )
+            response_count = min(responses.count(), 10)
+            response_found = response_found or response_count > 0
+            for index in range(response_count):
+                try:
+                    if responses.nth(index).input_value(timeout=500).strip():
+                        response_ready = True
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    if response_ready:
+        return "completada"
+    if widget_count or response_found:
+        return "pendiente"
+    return "no-detectada"
+
+
+def _browser_diagnostics(page, context, provider):
+    visible_actions = 0
+    for _, root in _browser_roots(page, search_all_frames=True):
+        visible_actions += _count_visible(
+            root,
+            "button, [role='button'], "
+            "input[type='button'], input[type='submit']",
+        )
+
+    try:
+        service_workers = len(context.service_workers)
+    except Exception:
+        service_workers = -1
+
+    try:
+        ready_state = page.evaluate("() => document.readyState")
+    except Exception:
+        ready_state = "desconocido"
+
+    diagnostics = {
+        "frames": len(page.frames),
+        "visible_actions": visible_actions,
+        "service_workers": service_workers,
+        "turnstile": _turnstile_status(page),
+        "ready_state": ready_state,
+    }
+    print(
+        f"[{provider}] Diagnóstico seguro: "
+        f"estado={diagnostics['ready_state']} "
+        f"marcos={diagnostics['frames']} "
+        f"acciones_visibles={diagnostics['visible_actions']} "
+        f"service_workers={diagnostics['service_workers']} "
+        f"turnstile={diagnostics['turnstile']}"
+    )
+    return diagnostics
 
 
 def _normalized_page_text(page):
@@ -189,7 +330,13 @@ def _normalized_page_text(page):
     ).casefold()
 
 
-def _unavailable_reason(page):
+def _unavailable_reason(page, diagnostics=None):
+    if diagnostics and diagnostics.get("turnstile") == "pendiente":
+        return (
+            "La validación de seguridad de Cloudflare quedó pendiente "
+            "en Chromium"
+        )
+
     text = _normalized_page_text(page)
 
     expired_terms = (
@@ -238,6 +385,12 @@ def _unavailable_reason(page):
     if any(term in text for term in challenge_terms):
         return "La verificación de seguridad del proveedor no terminó"
 
+    if diagnostics and diagnostics.get("visible_actions", 0) > 0:
+        return (
+            "La página cargó controles, pero el proveedor cambió "
+            "el botón de descarga"
+        )
+
     return "No se encontró un control que iniciara la descarga"
 
 
@@ -251,6 +404,7 @@ def _capture_download(
     request_records,
     handoffs,
     saved_paths,
+    allow_http_handoff,
 ):
     handoff = _create_http_handoff(
         download,
@@ -258,10 +412,17 @@ def _capture_download(
         context,
         provider,
         request_records,
+        allow_http_handoff,
     )
     if handoff is not None:
         handoffs.append(handoff)
         return True
+
+    if not allow_http_handoff:
+        print(
+            f"[{provider}] Descarga nativa del navegador activa; "
+            "se conservará la sesión validada"
+        )
 
     saved_path = save_playwright_download(download, target_dir, provider)
     if saved_path is not None:
@@ -271,10 +432,10 @@ def _capture_download(
     return False
 
 
-def _close_browser_objects(page, context, browser, request_listener):
-    if page is not None and request_listener is not None:
+def _close_browser_objects(page, context, browser, event_listeners):
+    for owner, event_name, listener in event_listeners:
         try:
-            page.remove_listener("request", request_listener)
+            owner.remove_listener(event_name, listener)
         except Exception:
             pass
 
@@ -306,11 +467,14 @@ def download_with_browser(
     *,
     download_all=False,
     wait_for_download_controls_seconds=0,
+    compatibility_mode=False,
+    search_all_frames=False,
+    allow_http_handoff=True,
 ):
     browser = None
     context = None
     page = None
-    request_listener = None
+    event_listeners = []
     started_at = monotonic()
     handoffs = []
     saved_paths = []
@@ -331,32 +495,10 @@ def download_with_browser(
                 browser = playwright.chromium.launch(
                     headless=True,
                     downloads_path=str(browser_download_dir),
-                    args=[
-                        "--disable-dev-shm-usage",
-                        "--no-sandbox",
-                        "--disable-gpu",
-                        "--disable-extensions",
-                        "--disable-sync",
-                        "--disable-background-networking",
-                        "--disable-breakpad",
-                        "--disable-component-update",
-                        "--disable-default-apps",
-                        "--disable-features=Translate,BackForwardCache,AcceptCHFrame",
-                        "--disable-hang-monitor",
-                        "--no-first-run",
-                        "--no-default-browser-check",
-                        "--renderer-process-limit=2",
-                        "--js-flags=--max-old-space-size=192",
-                        "--mute-audio",
-                    ],
+                    args=browser_launch_arguments(compatibility_mode),
                 )
                 context = browser.new_context(
-                    accept_downloads=True,
-                    user_agent=USER_AGENT,
-                    viewport={"width": 1280, "height": 800},
-                    locale="es-CL",
-                    timezone_id="America/Santiago",
-                    service_workers="block",
+                    **browser_context_options(compatibility_mode)
                 )
 
                 # No se interceptan recursos con context.route(). Los callbacks
@@ -366,32 +508,62 @@ def download_with_browser(
                 request_listener = lambda request: _remember_request(
                     request, request_records
                 )
-                page.on("request", request_listener)
+                # El contexto también recibe las solicitudes realizadas por un
+                # Service Worker; page.on("request") no siempre las observa.
+                context.on("request", request_listener)
+                event_listeners.append(
+                    (context, "request", request_listener)
+                )
                 page.set_default_timeout(10_000)
                 page.set_default_navigation_timeout(90_000)
+
+                if compatibility_mode:
+                    print(
+                        f"[{provider}] Modo compatible activo: "
+                        "User-Agent nativo y Service Workers habilitados"
+                    )
 
                 print(f"[{provider}] Abriendo: {url_for_log(url)}")
                 page.goto(url, wait_until="domcontentloaded", timeout=90_000)
                 page.wait_for_timeout(2_500)
 
-                click_if_visible(page, CONSENT_SELECTORS)
+                if compatibility_mode:
+                    try:
+                        page.wait_for_load_state(
+                            "networkidle",
+                            timeout=15_000,
+                        )
+                    except PlaywrightTimeoutError:
+                        print(
+                            f"[{provider}] La red sigue activa; "
+                            "se continuará esperando la interfaz"
+                        )
+
+                _click_consent(page, search_all_frames)
                 page.wait_for_timeout(750)
 
                 if download_all:
-                    selector, indices = _wait_for_download_controls(
+                    (
+                        root_name,
+                        control_root,
+                        selector,
+                        indices,
+                    ) = _wait_for_download_controls(
                         page,
                         ordered_selectors,
                         wait_for_download_controls_seconds,
+                        search_all_frames=search_all_frames,
+                        provider=provider,
                     )
 
                     if selector:
                         print(
                             f"[{provider}] Controles de descarga detectados: "
-                            f"{len(indices)}"
+                            f"{len(indices)} ({root_name})"
                         )
                         for position, index in enumerate(indices, 1):
                             try:
-                                locator = page.locator(selector).nth(index)
+                                locator = control_root.locator(selector).nth(index)
                                 if not locator.is_visible(timeout=1_000):
                                     errors.append(
                                         f"Archivo {position}: el botón dejó de estar visible"
@@ -412,6 +584,7 @@ def download_with_browser(
                                     request_records=request_records,
                                     handoffs=handoffs,
                                     saved_paths=saved_paths,
+                                    allow_http_handoff=allow_http_handoff,
                                 ):
                                     errors.append(
                                         f"Archivo {position}: formato o tamaño rechazado"
@@ -425,7 +598,15 @@ def download_with_browser(
                                     f"Archivo {position}: {safe_error_message(exc)}"
                                 )
                     else:
-                        unavailable_reason = _unavailable_reason(page)
+                        diagnostics = _browser_diagnostics(
+                            page,
+                            context,
+                            provider,
+                        )
+                        unavailable_reason = _unavailable_reason(
+                            page,
+                            diagnostics,
+                        )
                 else:
                     for selector in ordered_selectors:
                         elapsed = monotonic() - started_at
@@ -449,6 +630,7 @@ def download_with_browser(
                                     request_records=request_records,
                                     handoffs=handoffs,
                                     saved_paths=saved_paths,
+                                    allow_http_handoff=allow_http_handoff,
                                 )
                                 break
                         except PlaywrightTimeoutError:
@@ -494,10 +676,19 @@ def download_with_browser(
                                     request_records=request_records,
                                     handoffs=handoffs,
                                     saved_paths=saved_paths,
+                                    allow_http_handoff=allow_http_handoff,
                                 )
 
                     if not handoffs and not saved_paths:
-                        unavailable_reason = _unavailable_reason(page)
+                        diagnostics = _browser_diagnostics(
+                            page,
+                            context,
+                            provider,
+                        )
+                        unavailable_reason = _unavailable_reason(
+                            page,
+                            diagnostics,
+                        )
             finally:
                 # El cierre ocurre antes de salir de sync_playwright(), cuando
                 # el canal del navegador todavía está activo.
@@ -505,7 +696,7 @@ def download_with_browser(
                     page,
                     context,
                     browser,
-                    request_listener,
+                    event_listeners,
                 )
                 page = None
                 context = None
@@ -525,6 +716,7 @@ def download_with_browser(
             extra_headers={
                 **(handoff.headers or {}),
                 "Referer": handoff.referer,
+                "User-Agent": handoff.user_agent,
             },
             cookies=handoff.cookies,
             filename_hint=handoff.filename,

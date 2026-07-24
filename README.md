@@ -1,4 +1,4 @@
-# Descarga Automática Gmail → Google Drive V4.1
+# Descarga Automática Gmail → Google Drive V4.2
 
 Job de Cloud Run para procesar correos de Gmail, descargar adjuntos y enlaces
 de transferencia, y guardar los archivos obtenidos en Google Drive.
@@ -7,7 +7,7 @@ Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V4.1
+## Cambios principales de V4.2
 
 - Usa un volumen de Cloud Storage para no guardar archivos grandes en la
   memoria de Cloud Run.
@@ -28,6 +28,14 @@ comprimidos.
   como leídos.
 - Cierra Playwright antes de detener su canal y elimina el ruido
   `CancelledError`/`TargetClosedError`.
+- SendAllFiles usa un perfil de navegador compatible con su aplicación
+  dinámica: User-Agent nativo y Service Workers habilitados.
+- Busca controles de descarga tanto en la página principal como en marcos
+  internos.
+- Conserva la sesión validada de SendAllFiles y descarga mediante Chromium
+  directamente sobre el volumen externo.
+- Registra un diagnóstico seguro si la interfaz no aparece, sin publicar
+  enlaces, tokens ni nombres de archivos.
 
 ## Proveedores soportados
 

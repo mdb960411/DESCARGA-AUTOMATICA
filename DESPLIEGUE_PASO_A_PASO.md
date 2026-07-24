@@ -1,4 +1,4 @@
-# Despliegue paso a paso — V4.1
+# Despliegue paso a paso — V4.2
 
 Configuración preparada para:
 
@@ -113,7 +113,7 @@ inmediato**.
 3. Revisa que el log comience con:
 
    ```text
-   VERSION_APP: V4.1-MULTIFILE-2026-07-23
+   VERSION_APP: V4.2-SENDALLFILES-COMPAT-2026-07-24
    ```
 
 4. Para SendGB, el log esperado incluye:
@@ -141,6 +141,7 @@ inmediato**.
 
    ```text
    [SENDALLFILES] Controles de descarga detectados: 2
+   [SENDALLFILES] Descarga nativa del navegador activa
    [SENDALLFILES] Iniciando archivo 1 de 2
    [SENDALLFILES] Iniciando archivo 2 de 2
    ```
@@ -162,7 +163,7 @@ página del proveedor lo exponga.
 
 ## 10. Correos sin archivos
 
-La V4.1 crea automáticamente la etiqueta
+La V4.2 crea automáticamente la etiqueta
 `Descarga-Automatica-Ignorado`. Un correo sin adjuntos o enlaces útiles:
 
 - no se considera error;
