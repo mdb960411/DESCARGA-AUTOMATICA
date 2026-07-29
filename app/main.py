@@ -10,7 +10,10 @@ from app.downloaders.manager import provider_for
 from app.drive_client import DriveClient
 from app.gmail_client import GmailClient
 from app.google_auth import get_credentials
+from app.status import execution_status
 from app.utils import safe_error_message, safe_filename, url_for_log
+
+VERSION_APP = "V4.3-PROVIDER-RECOVERY-2026-07-28"
 
 
 def message_folder(base, index, sender, subject):
@@ -41,7 +44,7 @@ def create_execution_folder():
 
 
 def run():
-    print("VERSION_APP: V4.2-SENDALLFILES-COMPAT-2026-07-24")
+    print(f"VERSION_APP: {VERSION_APP}")
     Config.validate()
     execution_folder = create_execution_folder()
     summary = {
@@ -50,10 +53,15 @@ def run():
         "messages_ignored": 0,
         "messages_partial": 0,
         "messages_failed": 0,
+        "messages_manual": 0,
+        "messages_manual_partial": 0,
         "files_downloaded": 0,
         "files_uploaded": 0,
         "files_skipped_duplicate": 0,
         "links_failed": 0,
+        "links_manual": 0,
+        "execution_status": "EN_EJECUCION",
+        "manual_actions": [],
         "errors": [],
     }
 
@@ -90,6 +98,7 @@ def run():
                 )
                 links = gmail.extract_links(message)
                 link_failures = []
+                link_manual = []
                 upload_failures = []
                 attempted_links = 0
                 print(f"[CORREO] Enlaces útiles detectados: {len(links)}")
@@ -126,6 +135,19 @@ def run():
                         link_failures.append(failure)
                         summary["links_failed"] += 1
 
+                    if result.manual_actions:
+                        normalized_actions = [
+                            safe_error_message(action)
+                            for action in result.manual_actions
+                        ]
+                        details = "; ".join(normalized_actions[:5])
+                        manual_request = (
+                            f"{provider_for(url)}:{url_for_log(url)}"
+                            f" ({details})"
+                        )
+                        link_manual.append(manual_request)
+                        summary["links_manual"] += 1
+
                 summary["files_downloaded"] += len(downloaded)
 
                 for path in downloaded:
@@ -144,6 +166,10 @@ def run():
                 failures = [
                     *(f"Descarga fallida {item}" for item in link_failures),
                     *(f"Subida fallida {item}" for item in upload_failures),
+                ]
+                manual_requests = [
+                    f"Intervención manual {item}"
+                    for item in link_manual
                 ]
 
                 if not downloaded and attempted_links == 0:
@@ -169,6 +195,35 @@ def run():
                         summary["messages_failed"] += 1
                     summary["errors"].append(
                         f"Mensaje {message_id}: " + " | ".join(failures)
+                    )
+                    if manual_requests:
+                        summary["manual_actions"].append(
+                            f"Mensaje {message_id}: "
+                            + " | ".join(manual_requests)
+                        )
+                    continue
+
+                if manual_requests:
+                    partial_manual = completed_files > 0
+                    gmail.mark_manual(
+                        message_id,
+                        partial=partial_manual,
+                    )
+                    summary["messages_manual"] += 1
+                    if partial_manual:
+                        summary["messages_manual_partial"] += 1
+                    summary["manual_actions"].append(
+                        f"Mensaje {message_id}: "
+                        + " | ".join(manual_requests)
+                    )
+                    status = (
+                        "PARCIAL_MANUAL"
+                        if partial_manual
+                        else "MANUAL"
+                    )
+                    print(
+                        f"[CORREO] Estado={status}. "
+                        + " | ".join(manual_requests)
                     )
                     continue
 
@@ -209,6 +264,15 @@ def run():
                 if folder is not None:
                     shutil.rmtree(folder, ignore_errors=True)
 
+        summary["execution_status"] = execution_status(summary)
+        print(
+            f"[RESUMEN] Estado={summary['execution_status']} "
+            f"procesados={summary['messages_processed']} "
+            f"manuales={summary['messages_manual']} "
+            f"parciales={summary['messages_partial']} "
+            f"errores={summary['messages_failed']} "
+            f"ignorados={summary['messages_ignored']}"
+        )
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return summary
     finally:

@@ -41,7 +41,12 @@ def browser_launch_arguments(compatibility_mode=False):
     return arguments
 
 
-def browser_context_options(compatibility_mode=False):
+def browser_context_options(
+    compatibility_mode=False,
+    *,
+    native_user_agent=False,
+    allow_service_workers=False,
+):
     options = {
         "accept_downloads": True,
         "viewport": {"width": 1280, "height": 800},
@@ -49,12 +54,16 @@ def browser_context_options(compatibility_mode=False):
         "timezone_id": "America/Santiago",
     }
 
-    if compatibility_mode:
-        # Usa el User-Agent real del Chromium incluido en la imagen y permite
-        # que la aplicación web registre y utilice sus Service Workers.
+    if compatibility_mode or allow_service_workers:
         options["service_workers"] = "allow"
     else:
-        options["user_agent"] = USER_AGENT
         options["service_workers"] = "block"
+
+    if compatibility_mode or native_user_agent:
+        # Usa el User-Agent real del Chromium incluido en la imagen y permite
+        # que los proveedores modernos no reciban una versión de Chrome fija.
+        pass
+    else:
+        options["user_agent"] = USER_AGENT
 
     return options

@@ -54,6 +54,7 @@ class Config:
     error_label = os.getenv("ERROR_LABEL", "Descarga-Automatica-Error")
     partial_label = os.getenv("PARTIAL_LABEL", "Descarga-Automatica-Parcial")
     ignored_label = os.getenv("IGNORED_LABEL", "Descarga-Automatica-Ignorado")
+    manual_label = os.getenv("MANUAL_LABEL", "Descarga-Automatica-Manual")
     only_from = os.getenv("ONLY_FROM", "").strip().lower()
     only_from_domain = os.getenv("ONLY_FROM_DOMAIN", "").strip().lower()
     keyword = os.getenv("KEYWORD", "").strip().lower()
@@ -66,7 +67,12 @@ class Config:
     mark_as_read = env_bool("MARK_AS_READ", True)
     exclude_error_messages = env_bool("EXCLUDE_ERROR_MESSAGES", True)
     exclude_ignored_messages = env_bool("EXCLUDE_IGNORED_MESSAGES", True)
+    exclude_manual_messages = env_bool("EXCLUDE_MANUAL_MESSAGES", True)
     browser_http_handoff = env_bool("BROWSER_HTTP_HANDOFF", True)
+    browser_action_diagnostics = env_bool(
+        "BROWSER_ACTION_DIAGNOSTICS",
+        True,
+    )
     max_file_size_mb = env_int("MAX_FILE_SIZE_MB", 8192)
     download_chunk_size_mb = env_int("DOWNLOAD_CHUNK_SIZE_MB", 4)
     upload_chunk_size_mb = env_int("UPLOAD_CHUNK_SIZE_MB", 8)

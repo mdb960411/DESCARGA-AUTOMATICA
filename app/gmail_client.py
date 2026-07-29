@@ -27,6 +27,8 @@ class GmailClient:
             excluded_labels.append(Config.error_label)
         if Config.exclude_ignored_messages:
             excluded_labels.append(Config.ignored_label)
+        if Config.exclude_manual_messages:
+            excluded_labels.append(Config.manual_label)
 
         normalized_query = query.lower()
         for label in excluded_labels:
@@ -309,6 +311,7 @@ class GmailClient:
             Config.error_label,
             Config.partial_label,
             Config.ignored_label,
+            Config.manual_label,
         ):
             self.label_id(name, create=True)
 
@@ -352,6 +355,7 @@ class GmailClient:
                 Config.error_label,
                 Config.partial_label,
                 Config.ignored_label,
+                Config.manual_label,
             ],
             mark_as_read=Config.mark_as_read,
         )
@@ -361,10 +365,18 @@ class GmailClient:
         if partial:
             add_labels.append(Config.partial_label)
 
+        remove_labels = [
+            Config.processed_label,
+            Config.ignored_label,
+            Config.manual_label,
+        ]
+        if not partial:
+            remove_labels.append(Config.partial_label)
+
         self._modify_status(
             message_id,
             add_labels=add_labels,
-            remove_labels=[Config.processed_label, Config.ignored_label],
+            remove_labels=remove_labels,
             mark_as_read=False,
         )
 
@@ -376,8 +388,31 @@ class GmailClient:
                 Config.processed_label,
                 Config.error_label,
                 Config.partial_label,
+                Config.manual_label,
             ],
             # Un correo personal sin archivos no debe marcarse como leído por
             # una automatización destinada únicamente a transferencias.
+            mark_as_read=False,
+        )
+
+    def mark_manual(self, message_id, partial=False):
+        add_labels = [Config.manual_label]
+        if partial:
+            add_labels.append(Config.partial_label)
+
+        remove_labels = [
+            Config.processed_label,
+            Config.error_label,
+            Config.ignored_label,
+        ]
+        if not partial:
+            remove_labels.append(Config.partial_label)
+
+        self._modify_status(
+            message_id,
+            add_labels=add_labels,
+            remove_labels=remove_labels,
+            # El usuario todavía debe intervenir, por lo que el correo se
+            # conserva como no leído.
             mark_as_read=False,
         )

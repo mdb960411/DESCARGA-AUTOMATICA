@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
+from urllib.parse import unquote, urlparse
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -20,8 +22,17 @@ from app.downloaders.common import (
     save_playwright_download,
 )
 from app.downloaders.direct import download_direct
-from app.downloaders.smart_browser import try_smart_download
-from app.utils import safe_error_message, url_for_log
+from app.downloaders.smart_browser import (
+    try_smart_download,
+    visible_action_descriptions,
+)
+from app.status import manual_action_for_reason
+from app.utils import (
+    extension_allowed,
+    safe_error_message,
+    safe_filename,
+    url_for_log,
+)
 
 CONSENT_SELECTORS = [
     "button:has-text('Accept all')",
@@ -48,6 +59,7 @@ GENERIC_DOWNLOAD_SELECTORS = [
 SELECTOR_DOWNLOAD_TIMEOUT_MS = 20_000
 BROWSER_TOTAL_TIMEOUT_SECONDS = 120
 MAX_REQUEST_RECORDS = 2_000
+MAX_FILE_RESPONSE_RECORDS = 50
 MAX_MULTI_DOWNLOAD_CONTROLS = 50
 
 
@@ -69,11 +81,22 @@ def _try_locator_download(page, locator, timeout=SELECTOR_DOWNLOAD_TIMEOUT_MS):
     return download_info.value
 
 
-def _try_selector_download(page, selector, timeout=SELECTOR_DOWNLOAD_TIMEOUT_MS):
-    locator = page.locator(selector).first
-    if not locator.count() or not locator.is_visible(timeout=1500):
-        return None
-    return _try_locator_download(page, locator, timeout=timeout)
+def _try_selector_download(
+    page,
+    selector,
+    timeout=SELECTOR_DOWNLOAD_TIMEOUT_MS,
+    *,
+    search_all_frames=False,
+):
+    for root_name, root in _browser_roots(page, search_all_frames):
+        locator = root.locator(selector).first
+        if not locator.count() or not locator.is_visible(timeout=1500):
+            continue
+        return (
+            _try_locator_download(page, locator, timeout=timeout),
+            root_name,
+        )
+    return None, None
 
 
 def _safe_request_headers(headers):
@@ -83,6 +106,8 @@ def _safe_request_headers(headers):
         "content-length",
         "cookie",
         "host",
+        "if-range",
+        "range",
         "user-agent",
     }
     return {
@@ -104,6 +129,139 @@ def _remember_request(request, records):
         }
     except Exception:
         pass
+
+
+def _response_filename_hint(url, headers):
+    disposition = headers.get("content-disposition", "")
+    for pattern in (
+        r"filename\*=UTF-8''([^;]+)",
+        r'filename="?([^";]+)"?',
+    ):
+        match = re.search(pattern, disposition, re.I)
+        if match:
+            return safe_filename(unquote(match.group(1)))
+
+    name = Path(urlparse(url).path).name
+    if name and "." in name:
+        return safe_filename(name)
+    return ""
+
+
+def _remember_file_response(response, records):
+    try:
+        if response.status not in {200, 206}:
+            return
+
+        headers = {
+            name.lower(): value
+            for name, value in response.headers.items()
+        }
+        content_type = headers.get("content-type", "").casefold()
+        disposition = headers.get(
+            "content-disposition",
+            "",
+        ).casefold()
+        request = response.request
+        resource_type = request.resource_type
+        url = response.url
+        url_lower = url.casefold()
+        suffix = Path(urlparse(url).path).suffix.casefold()
+
+        blocked_types = (
+            "text/html",
+            "application/json",
+            "javascript",
+            "text/css",
+            "font/",
+        )
+        if any(item in content_type for item in blocked_types):
+            return
+
+        strong_file_types = (
+            "application/zip",
+            "application/x-zip",
+            "application/x-rar",
+            "application/pdf",
+            "application/postscript",
+            "application/illustrator",
+            "image/vnd.adobe.photoshop",
+        )
+        allowed_suffix = (
+            bool(suffix)
+            and extension_allowed(
+                f"archivo{suffix}",
+                Config.allowed_extensions,
+            )
+        )
+        download_hint = (
+            "download" in url_lower
+            or "descarg" in url_lower
+        )
+        octet_stream_file = (
+            "application/octet-stream" in content_type
+            and (
+                "attachment" in disposition
+                or download_hint
+                or allowed_suffix
+            )
+        )
+        file_like = (
+            "attachment" in disposition
+            or any(item in content_type for item in strong_file_types)
+            or octet_stream_file
+            or (
+                download_hint
+                and resource_type
+                in {"document", "fetch", "xhr", "other"}
+            )
+            or (
+                allowed_suffix
+                and resource_type
+                in {"document", "fetch", "xhr", "other"}
+            )
+        )
+        if not file_like:
+            return
+
+        if len(records) >= MAX_FILE_RESPONSE_RECORDS:
+            records.pop(next(iter(records)))
+        records[url] = {
+            "url": url,
+            "filename": _response_filename_hint(url, headers),
+            "referer": request.headers.get("referer", ""),
+            "method": request.method,
+            "request_body": request.post_data,
+            "headers": _safe_request_headers(request.headers),
+        }
+    except Exception:
+        pass
+
+
+def _handoff_from_file_response(record, page, context, provider):
+    try:
+        browser_user_agent = page.evaluate(
+            "() => navigator.userAgent"
+        )
+    except Exception:
+        browser_user_agent = USER_AGENT
+
+    print(
+        f"[{provider}] Respuesta de archivo detectada en la red; "
+        "continuará por HTTP en bloques"
+    )
+    return HttpDownloadHandoff(
+        url=record["url"],
+        filename=(
+            record.get("filename")
+            or f"{provider.lower()}_download.bin"
+        ),
+        referer=record.get("referer") or page.url,
+        cookies=context.cookies(),
+        user_agent=browser_user_agent,
+        method=record.get("method", "GET"),
+        request_body=record.get("request_body"),
+        headers=record.get("headers"),
+    )
 
 
 def _create_http_handoff(
@@ -313,6 +471,22 @@ def _browser_diagnostics(page, context, provider):
         f"service_workers={diagnostics['service_workers']} "
         f"turnstile={diagnostics['turnstile']}"
     )
+    if Config.browser_action_diagnostics:
+        descriptions = visible_action_descriptions(page, limit=8)
+        if descriptions:
+            print(
+                f"[{provider}] Acciones útiles visibles "
+                f"(sin enlaces privados): {len(descriptions)}"
+            )
+            for index, description in enumerate(descriptions, 1):
+                print(
+                    f"[{provider}] Acción visible {index}: "
+                    f"{description}"
+                )
+        else:
+            print(
+                f"[{provider}] Acciones útiles visibles: ninguna"
+            )
     return diagnostics
 
 
@@ -468,8 +642,11 @@ def download_with_browser(
     download_all=False,
     wait_for_download_controls_seconds=0,
     compatibility_mode=False,
+    native_user_agent=False,
+    allow_service_workers=False,
     search_all_frames=False,
     allow_http_handoff=True,
+    manual_on_pending_challenge=False,
 ):
     browser = None
     context = None
@@ -479,8 +656,10 @@ def download_with_browser(
     handoffs = []
     saved_paths = []
     errors = []
+    manual_actions = []
     unavailable_reason = None
     request_records = {}
+    file_response_records = {}
 
     ordered_selectors = list(
         dict.fromkeys([*download_selectors, *GENERIC_DOWNLOAD_SELECTORS])
@@ -498,7 +677,11 @@ def download_with_browser(
                     args=browser_launch_arguments(compatibility_mode),
                 )
                 context = browser.new_context(
-                    **browser_context_options(compatibility_mode)
+                    **browser_context_options(
+                        compatibility_mode,
+                        native_user_agent=native_user_agent,
+                        allow_service_workers=allow_service_workers,
+                    )
                 )
 
                 # No se interceptan recursos con context.route(). Los callbacks
@@ -514,6 +697,14 @@ def download_with_browser(
                 event_listeners.append(
                     (context, "request", request_listener)
                 )
+                response_listener = lambda response: _remember_file_response(
+                    response,
+                    file_response_records,
+                )
+                context.on("response", response_listener)
+                event_listeners.append(
+                    (context, "response", response_listener)
+                )
                 page.set_default_timeout(10_000)
                 page.set_default_navigation_timeout(90_000)
 
@@ -521,6 +712,11 @@ def download_with_browser(
                     print(
                         f"[{provider}] Modo compatible activo: "
                         "User-Agent nativo y Service Workers habilitados"
+                    )
+                elif native_user_agent:
+                    print(
+                        f"[{provider}] Perfil web moderno activo: "
+                        "User-Agent nativo"
                     )
 
                 print(f"[{provider}] Abriendo: {url_for_log(url)}")
@@ -541,6 +737,28 @@ def download_with_browser(
 
                 _click_consent(page, search_all_frames)
                 page.wait_for_timeout(750)
+
+                if (
+                    not download_all
+                    and wait_for_download_controls_seconds > 0
+                ):
+                    (
+                        ready_root_name,
+                        _,
+                        ready_selector,
+                        _,
+                    ) = _wait_for_download_controls(
+                        page,
+                        ordered_selectors,
+                        wait_for_download_controls_seconds,
+                        search_all_frames=search_all_frames,
+                        provider=provider,
+                    )
+                    if ready_selector:
+                        print(
+                            f"[{provider}] Interfaz de descarga lista "
+                            f"({ready_root_name})"
+                        )
 
                 if download_all:
                     (
@@ -619,8 +837,19 @@ def download_with_browser(
 
                         try:
                             print(f"[{provider}] Probando selector: {selector}")
-                            download = _try_selector_download(page, selector)
+                            (
+                                download,
+                                selector_root,
+                            ) = _try_selector_download(
+                                page,
+                                selector,
+                                search_all_frames=search_all_frames,
+                            )
                             if download:
+                                print(
+                                    f"[{provider}] Descarga iniciada desde "
+                                    f"{selector_root}"
+                                )
                                 _capture_download(
                                     download,
                                     page=page,
@@ -660,12 +889,15 @@ def download_with_browser(
                             )
                         else:
                             print(f"[{provider}] Iniciando Smart Browser...")
-                            download = try_smart_download(
+                            smart_result = try_smart_download(
                                 page,
                                 provider,
                                 download_selectors,
                                 max_seconds=min(30, remaining),
+                                search_all_frames=search_all_frames,
                             )
+                            page = smart_result.page
+                            download = smart_result.download
                             if download:
                                 _capture_download(
                                     download,
@@ -678,6 +910,24 @@ def download_with_browser(
                                     saved_paths=saved_paths,
                                     allow_http_handoff=allow_http_handoff,
                                 )
+
+                    if (
+                        not handoffs
+                        and not saved_paths
+                        and allow_http_handoff
+                        and file_response_records
+                    ):
+                        record = next(
+                            reversed(file_response_records.values())
+                        )
+                        handoffs.append(
+                            _handoff_from_file_response(
+                                record,
+                                page,
+                                context,
+                                provider,
+                            )
+                        )
 
                     if not handoffs and not saved_paths:
                         diagnostics = _browser_diagnostics(
@@ -730,16 +980,36 @@ def download_with_browser(
             )
 
     if not saved_paths and not errors:
-        errors.append(
-            unavailable_reason
-            or "No se encontró un control que iniciara la descarga"
+        manual_action = manual_action_for_reason(
+            unavailable_reason,
+            manual_on_pending_challenge,
         )
+        if manual_action:
+            manual_actions.append(manual_action)
+        else:
+            errors.append(
+                unavailable_reason
+                or "No se encontró un control que iniciara la descarga"
+            )
 
-    if unavailable_reason and not saved_paths and unavailable_reason not in errors:
+    if (
+        unavailable_reason
+        and not saved_paths
+        and not manual_actions
+        and unavailable_reason not in errors
+    ):
         errors.append(unavailable_reason)
 
     if errors:
         for error in errors:
             print(f"[{provider}] {error}")
 
-    return DownloadResult(paths=saved_paths, errors=errors)
+    if manual_actions:
+        for action in manual_actions:
+            print(f"[{provider}] ACCION_MANUAL: {action}")
+
+    return DownloadResult(
+        paths=saved_paths,
+        errors=errors,
+        manual_actions=manual_actions,
+    )

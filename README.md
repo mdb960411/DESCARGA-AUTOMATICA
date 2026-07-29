@@ -1,4 +1,4 @@
-# Descarga Automática Gmail → Google Drive V4.2
+# Descarga Automática Gmail → Google Drive V4.3
 
 Job de Cloud Run para procesar correos de Gmail, descargar adjuntos y enlaces
 de transferencia, y guardar los archivos obtenidos en Google Drive.
@@ -7,7 +7,7 @@ Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V4.2
+## Cambios principales de V4.3
 
 - Usa un volumen de Cloud Storage para no guardar archivos grandes en la
   memoria de Cloud Run.
@@ -36,6 +36,20 @@ comprimidos.
   directamente sobre el volumen externo.
 - Registra un diagnóstico seguro si la interfaz no aparece, sin publicar
   enlaces, tokens ni nombres de archivos.
+- Cuando Cloudflare no termina la validación de SendAllFiles, etiqueta el
+  correo como `Descarga-Automatica-Manual` en vez de confundirlo con un enlace
+  caducado.
+- WeTransfer, TransferNow y SwissTransfer usan el User-Agent nativo de
+  Chromium, buscan controles dentro de marcos y soportan interfaces de varios
+  pasos.
+- El navegador reconoce botones por texto, accesibilidad, `data-testid`,
+  título y destino, y puede continuar la búsqueda después de un primer clic.
+- Si una descarga no genera el evento habitual de Chromium, puede recuperar
+  una respuesta de archivo detectada en la red y continuar por HTTP en bloques.
+- En caso de fallo registra descripciones seguras de los controles visibles,
+  sin exponer los enlaces privados.
+- El resumen final distingue `OK`, `REQUIERE_ATENCION_MANUAL` y
+  `COMPLETADO_CON_ERRORES`.
 
 ## Proveedores soportados
 
@@ -72,6 +86,7 @@ PROCESSED_LABEL=Descarga-Automatica-Procesado
 ERROR_LABEL=Descarga-Automatica-Error
 PARTIAL_LABEL=Descarga-Automatica-Parcial
 IGNORED_LABEL=Descarga-Automatica-Ignorado
+MANUAL_LABEL=Descarga-Automatica-Manual
 MAX_EMAILS=20
 MAX_FILE_SIZE_MB=8192
 DOWNLOAD_CHUNK_SIZE_MB=4
@@ -81,6 +96,8 @@ DOWNLOAD_TIMEOUT_SECONDS=1800
 BROWSER_HTTP_HANDOFF=true
 EXCLUDE_ERROR_MESSAGES=true
 EXCLUDE_IGNORED_MESSAGES=true
+EXCLUDE_MANUAL_MESSAGES=true
+BROWSER_ACTION_DIAGNOSTICS=true
 ENABLE_SENDGB=true
 MARK_AS_READ=true
 ```
@@ -109,10 +126,13 @@ a producción gráfica. Para configurarla manualmente:
 - `Descarga-Automatica-Error`: el mensaje requiere revisión.
 - `Descarga-Automatica-Ignorado`: el correo no contenía archivos útiles o no
   cumplía las reglas. Se conserva como no leído.
+- `Descarga-Automatica-Manual`: el enlace sigue requiriendo intervención
+  humana, por ejemplo cuando Cloudflare no completa su validación en Cloud
+  Run. Se conserva como no leído.
 
-Los mensajes con etiquetas de error o ignorado se excluyen de ejecuciones
-posteriores. Para reintentar un error, corrige la causa, elimina la etiqueta
-`Descarga-Automatica-Error` y conserva el mensaje como no leído.
+Los mensajes con etiquetas de error, manual o ignorado se excluyen de
+ejecuciones posteriores. Para reintentar un correo, corrige la causa, elimina
+su etiqueta de estado y consérvalo como no leído.
 
 ## Despliegue
 

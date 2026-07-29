@@ -1,4 +1,4 @@
-# Despliegue paso a paso — V4.2
+# Despliegue paso a paso — V4.3
 
 Configuración preparada para:
 
@@ -66,6 +66,9 @@ ERROR_LABEL=Descarga-Automatica-Error
 PARTIAL_LABEL=Descarga-Automatica-Parcial
 IGNORED_LABEL=Descarga-Automatica-Ignorado
 EXCLUDE_IGNORED_MESSAGES=true
+MANUAL_LABEL=Descarga-Automatica-Manual
+EXCLUDE_MANUAL_MESSAGES=true
+BROWSER_ACTION_DIAGNOSTICS=true
 ```
 
 Configura `ALLOWED_EXTENSIONS` con:
@@ -113,7 +116,7 @@ inmediato**.
 3. Revisa que el log comience con:
 
    ```text
-   VERSION_APP: V4.2-SENDALLFILES-COMPAT-2026-07-24
+   VERSION_APP: V4.3-PROVIDER-RECOVERY-2026-07-28
    ```
 
 4. Para SendGB, el log esperado incluye:
@@ -137,33 +140,58 @@ inmediato**.
    `Descarga-Automatica-Error`.
 3. Déjalo como no leído.
 4. Ejecuta el job.
-5. El log esperado debe incluir:
+5. El log debe comenzar con:
 
    ```text
-   [SENDALLFILES] Controles de descarga detectados: 2
-   [SENDALLFILES] Descarga nativa del navegador activa
-   [SENDALLFILES] Iniciando archivo 1 de 2
-   [SENDALLFILES] Iniciando archivo 2 de 2
+   [SENDALLFILES] Modo compatible activo
    ```
 
-6. Confirma que ambos archivos aparecen en Google Drive.
+6. Si Cloudflare completa la validación, el job intentará descargar todos los
+   archivos.
+7. Si Cloudflare queda pendiente, el resultado esperado es:
 
-No reintentes los enlaces de WeTransfer o TransferNow ya caducados; la
-aplicación los mantendrá en estado de error y mostrará el motivo cuando la
-página del proveedor lo exponga.
+   ```text
+   [SENDALLFILES] ACCION_MANUAL: ...
+   [CORREO] Estado=MANUAL. ...
+   ```
 
-## 9. Reintentar un correo con error
+8. Gmail creará `Descarga-Automatica-Manual`. El correo permanecerá no leído y
+   no volverá a procesarse automáticamente.
+
+Esto no significa que `LINK 4.zip` o `LINK 2.zip` estén caducados. Significa que
+el proveedor exige una validación humana que no terminó dentro de Cloud Run.
+
+## 9. Prueba de WeTransfer, TransferNow y SwissTransfer
+
+1. Genera una transferencia nueva y pequeña en cada proveedor.
+2. Deja sus correos sin leer.
+3. No reutilices correos que informen expresamente que la transferencia
+   caducó.
+4. Ejecuta primero con `MAX_EMAILS=1`.
+5. Busca en el log:
+
+   ```text
+   Perfil web moderno activo
+   Interfaz de descarga lista
+   Candidato inteligente etapa ...
+   ```
+
+6. Si falla, conserva las líneas `Acción visible`. Son diagnósticos seguros y
+   permiten actualizar la integración sin publicar el enlace privado.
+
+## 10. Reintentar un correo con error o manual
 
 1. Abre Gmail.
-2. Busca la etiqueta `Descarga-Automatica-Error`.
+2. Busca la etiqueta `Descarga-Automatica-Error` o
+   `Descarga-Automatica-Manual`.
 3. Corrige la causa o verifica que el enlace siga vigente.
-4. Elimina la etiqueta de error del mensaje.
+4. Elimina únicamente la etiqueta de estado del mensaje.
 5. Déjalo como no leído.
 6. Ejecuta nuevamente el job.
 
-## 10. Correos sin archivos
+## 11. Correos sin archivos
 
-La V4.2 crea automáticamente la etiqueta
+La V4.3 crea automáticamente la etiqueta
 `Descarga-Automatica-Ignorado`. Un correo sin adjuntos o enlaces útiles:
 
 - no se considera error;
@@ -172,7 +200,17 @@ La V4.2 crea automáticamente la etiqueta
 
 Para volver a evaluarlo, elimina esa etiqueta.
 
-## 11. Volver a la versión anterior
+## 12. Interpretar el resumen
+
+- `OK`: no hubo errores ni intervenciones manuales.
+- `REQUIERE_ATENCION_MANUAL`: al menos un correo necesita ser descargado por
+  una persona, pero no hubo fallos técnicos.
+- `COMPLETADO_CON_ERRORES`: uno o más proveedores o subidas fallaron.
+
+El contenedor puede terminar con `exit(0)` porque los errores se administran
+por correo. Revisa siempre `[RESUMEN] Estado=...`.
+
+## 13. Volver a la versión anterior
 
 Si la prueba falla antes de procesar correos, edita el job y vuelve a seleccionar
 la imagen anterior. Conserva el bucket; no interfiere con la versión anterior

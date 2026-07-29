@@ -16,11 +16,16 @@ class DownloadResult:
 
     paths: list[Path] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    manual_actions: list[str] = field(default_factory=list)
 
     @classmethod
     def from_value(cls, value, default_error):
         if isinstance(value, cls):
-            if not value.paths and not value.errors:
+            if (
+                not value.paths
+                and not value.errors
+                and not value.manual_actions
+            ):
                 value.errors.append(default_error)
             return value
 

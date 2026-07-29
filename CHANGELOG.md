@@ -1,5 +1,24 @@
 # Historial de cambios
 
+## V4.3 — Recuperación de proveedores y atención manual
+
+- Nueva etiqueta Gmail `Descarga-Automatica-Manual`.
+- SendAllFiles pasa a estado `MANUAL` cuando Cloudflare Turnstile queda
+  pendiente; ya no se registra como enlace caducado ni se reintenta
+  indefinidamente.
+- WeTransfer, TransferNow y SwissTransfer usan User-Agent nativo de Chromium.
+- Búsqueda de controles en la página principal y en todos sus marcos.
+- Smart Browser de hasta tres etapas para interfaces donde un primer botón
+  abre la pantalla de descarga definitiva.
+- Reconocimiento por texto, atributos accesibles, `data-testid`, título y
+  destino del control.
+- Captura de respuestas de archivo en la red como respaldo del evento de
+  descarga del navegador.
+- Diagnóstico seguro de acciones visibles, sin publicar enlaces privados.
+- Resumen final con estado global y contadores separados de errores y acciones
+  manuales.
+- Nueva firma `V4.3-PROVIDER-RECOVERY-2026-07-28`.
+
 ## V4.2 — Compatibilidad reforzada con SendAllFiles
 
 - User-Agent nativo de Chromium para SendAllFiles.

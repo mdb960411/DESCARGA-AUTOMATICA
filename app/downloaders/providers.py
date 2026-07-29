@@ -29,13 +29,24 @@ def download_wetransfer(url, target_dir):
         target_dir,
         "WETRANSFER",
         [
+            "button[data-testid='download-button']",
+            "[data-testid*='download' i]",
+            "[aria-label*='download' i]",
+            "[aria-label*='descargar' i]",
             "button:has-text('Download')",
             "button:has-text('Descargar')",
+            "button:has-text('Get your files')",
+            "button:has-text('Get files')",
             "a:has-text('Download')",
             "a:has-text('Descargar')",
+            "a:has-text('Get your files')",
             "button[data-testid*='download']",
             "a[data-testid*='download']",
         ],
+        wait_for_download_controls_seconds=15,
+        native_user_agent=True,
+        allow_service_workers=True,
+        search_all_frames=True,
     )
 
 
@@ -45,12 +56,22 @@ def download_transfernow(url, target_dir):
         target_dir,
         "TRANSFERNOW",
         [
+            "[data-testid*='download' i]",
+            "[aria-label*='download' i]",
+            "[aria-label*='descargar' i]",
             "button:has-text('Descargar')",
+            "button:has-text('Descargar todo')",
             "a:has-text('Descargar')",
             "button:has-text('Download')",
+            "button:has-text('Download all')",
             "a:has-text('Download')",
+            "button:has-text('Télécharger')",
+            "a:has-text('Télécharger')",
             "a[href*='/download']",
         ],
+        wait_for_download_controls_seconds=15,
+        native_user_agent=True,
+        search_all_frames=True,
     )
 
 
@@ -82,6 +103,7 @@ def download_sendallfiles(url, target_dir):
         # Conserva la sesión validada por Cloudflare mientras Chromium escribe
         # directamente en el volumen externo montado.
         allow_http_handoff=False,
+        manual_on_pending_challenge=True,
     )
 
 
@@ -91,6 +113,11 @@ def download_swisstransfer(url, target_dir):
         target_dir,
         "SWISSTRANSFER",
         [
+            "[data-testid*='download' i]",
+            "[aria-label*='download' i]",
+            "[aria-label*='descargar' i]",
+            "[title*='download' i]",
+            "[title*='descargar' i]",
             "button:has-text('Descargar todo')",
             "a:has-text('Descargar todo')",
             "[role='button']:has-text('Descargar todo')",
@@ -105,4 +132,7 @@ def download_swisstransfer(url, target_dir):
             "a[data-testid*='download']",
             "a[download]",
         ],
+        wait_for_download_controls_seconds=15,
+        native_user_agent=True,
+        search_all_frames=True,
     )
