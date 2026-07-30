@@ -810,6 +810,11 @@ def download_with_browser(
     search_all_frames=False,
     allow_http_handoff=True,
     manual_on_pending_challenge=False,
+    browser_total_timeout_seconds=BROWSER_TOTAL_TIMEOUT_SECONDS,
+    smart_browser_max_seconds=30,
+    smart_browser_max_stages=3,
+    smart_browser_stage_settle_ms=600,
+    async_download_grace_seconds=0,
 ):
     browser = None
     context = None
@@ -823,6 +828,9 @@ def download_with_browser(
     unavailable_reason = None
     request_records = {}
     file_response_records = {}
+    observed_downloads = []
+    handled_download_ids = set()
+    attached_page_ids = set()
 
     ordered_selectors = list(
         dict.fromkeys([*download_selectors, *GENERIC_DOWNLOAD_SELECTORS])
@@ -852,10 +860,33 @@ def download_with_browser(
                     )
                 )
 
+                def attach_download_listener(candidate_page):
+                    page_id = id(candidate_page)
+                    if page_id in attached_page_ids:
+                        return
+                    attached_page_ids.add(page_id)
+                    listener = lambda download, source_page=candidate_page: (
+                        observed_downloads.append(
+                            (source_page, download)
+                        )
+                    )
+                    candidate_page.on("download", listener)
+                    event_listeners.append(
+                        (candidate_page, "download", listener)
+                    )
+
                 # No se interceptan recursos con context.route(). Los callbacks
                 # pendientes de esa ruta eran la causa de CancelledError y
                 # TargetClosedError al apagar Chromium.
                 page = context.new_page()
+                attach_download_listener(page)
+                page_listener = lambda new_page: attach_download_listener(
+                    new_page
+                )
+                context.on("page", page_listener)
+                event_listeners.append(
+                    (context, "page", page_listener)
+                )
                 request_listener = lambda request: _remember_request(
                     request, request_records
                 )
@@ -985,6 +1016,7 @@ def download_with_browser(
                                     errors.append(
                                         f"Archivo {position}: formato o tamaño rechazado"
                                     )
+                                handled_download_ids.add(id(download))
                             except PlaywrightTimeoutError:
                                 errors.append(
                                     f"Archivo {position}: el botón no inició la descarga"
@@ -1006,10 +1038,10 @@ def download_with_browser(
                 else:
                     for selector in ordered_selectors:
                         elapsed = monotonic() - started_at
-                        if elapsed >= BROWSER_TOTAL_TIMEOUT_SECONDS:
+                        if elapsed >= browser_total_timeout_seconds:
                             print(
                                 f"[{provider}] Tiempo máximo del navegador alcanzado "
-                                f"({BROWSER_TOTAL_TIMEOUT_SECONDS}s)"
+                                f"({browser_total_timeout_seconds}s)"
                             )
                             break
 
@@ -1049,6 +1081,7 @@ def download_with_browser(
                                     saved_paths=saved_paths,
                                     allow_http_handoff=allow_http_handoff,
                                 )
+                                handled_download_ids.add(id(download))
                                 break
                         except PlaywrightTimeoutError:
                             advanced_page = _page_after_timed_out_click(
@@ -1080,7 +1113,7 @@ def download_with_browser(
                         remaining = max(
                             0,
                             int(
-                                BROWSER_TOTAL_TIMEOUT_SECONDS
+                                browser_total_timeout_seconds
                                 - (monotonic() - started_at)
                             ),
                         )
@@ -1094,8 +1127,15 @@ def download_with_browser(
                                 page,
                                 provider,
                                 download_selectors,
-                                max_seconds=min(30, remaining),
+                                max_seconds=min(
+                                    smart_browser_max_seconds,
+                                    remaining,
+                                ),
                                 search_all_frames=search_all_frames,
+                                max_stages=smart_browser_max_stages,
+                                stage_settle_ms=(
+                                    smart_browser_stage_settle_ms
+                                ),
                             )
                             page = smart_result.page
                             download = smart_result.download
@@ -1111,6 +1151,47 @@ def download_with_browser(
                                     saved_paths=saved_paths,
                                     allow_http_handoff=allow_http_handoff,
                                 )
+                                handled_download_ids.add(id(download))
+
+                    if (
+                        not handoffs
+                        and not saved_paths
+                        and async_download_grace_seconds > 0
+                    ):
+                        try:
+                            page.wait_for_timeout(
+                                async_download_grace_seconds * 1_000
+                            )
+                        except Exception:
+                            pass
+
+                    pending_downloads = [
+                        (source_page, download)
+                        for source_page, download in observed_downloads
+                        if id(download) not in handled_download_ids
+                    ]
+                    if (
+                        not handoffs
+                        and not saved_paths
+                        and pending_downloads
+                    ):
+                        source_page, download = pending_downloads[-1]
+                        handled_download_ids.add(id(download))
+                        print(
+                            f"[{provider}] Descarga asíncrona detectada; "
+                            "se conservará el archivo iniciado"
+                        )
+                        _capture_download(
+                            download,
+                            page=source_page,
+                            context=context,
+                            provider=provider,
+                            target_dir=target_dir,
+                            request_records=request_records,
+                            handoffs=handoffs,
+                            saved_paths=saved_paths,
+                            allow_http_handoff=allow_http_handoff,
+                        )
 
                     if (
                         not handoffs

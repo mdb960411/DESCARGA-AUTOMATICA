@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.browser_profile import WETRANSFER_BROWSER_OPTIONS
 from app.config import Config
 from app.downloaders.browser import download_with_browser
 
@@ -47,10 +48,7 @@ def download_wetransfer(url, target_dir):
             "button[data-testid*='download']",
             "a[data-testid*='download']",
         ],
-        wait_for_download_controls_seconds=45,
-        native_user_agent=True,
-        allow_service_workers=True,
-        search_all_frames=True,
+        **WETRANSFER_BROWSER_OPTIONS,
         # WeTransfer puede invalidar su URL de un solo uso cuando Chromium
         # cancela la descarga para cederla a requests. Se conserva la descarga
         # nativa directamente sobre el bucket montado.

@@ -26,6 +26,19 @@ OPTIMIZED_LAUNCH_ARGUMENTS = [
     "--js-flags=--max-old-space-size=192",
 ]
 
+WETRANSFER_BROWSER_OPTIONS = {
+    "wait_for_download_controls_seconds": 75,
+    "compatibility_mode": True,
+    "native_user_agent": True,
+    "allow_service_workers": True,
+    "search_all_frames": True,
+    "browser_total_timeout_seconds": 180,
+    "smart_browser_max_seconds": 75,
+    "smart_browser_max_stages": 5,
+    "smart_browser_stage_settle_ms": 1_500,
+    "async_download_grace_seconds": 3,
+}
+
 
 def browser_launch_arguments(compatibility_mode=False):
     """

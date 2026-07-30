@@ -1,5 +1,19 @@
 # Historial de cambios
 
+## V4.5.3 — Panel y descarga multipaso de WeTransfer
+
+- WeTransfer usa el perfil compatible completo para que su aplicación dinámica
+  pueda cargar el panel lateral de la transferencia.
+- La espera del panel aumenta de 45 a 75 segundos.
+- El navegador inteligente admite hasta cinco etapas y reconoce el control
+  `Ir a la transferencia`.
+- Después de cada avance espera la carga del siguiente control en vez de
+  finalizar inmediatamente.
+- Una descarga iniciada de forma asíncrona se conserva aunque el evento ocurra
+  después de la ventana inmediata del clic.
+- Se mantienen las exclusiones de publicidad como `Sé Ultimate`.
+- Nueva firma `V4.5.3-WETRANSFER-MULTISTEP-2026-07-30`.
+
 ## V4.5.2 — Reintentos internos de TransferNow
 
 - TransferNow realiza hasta tres intentos aislados con navegadores nuevos

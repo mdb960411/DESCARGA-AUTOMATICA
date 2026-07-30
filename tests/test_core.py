@@ -4,9 +4,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-from app.action_policy import is_marketing_action
+from app.action_policy import (
+    TRANSFER_CONTINUE_WORDS,
+    is_marketing_action,
+)
 from app.browser_profile import (
     USER_AGENT,
+    WETRANSFER_BROWSER_OPTIONS,
     browser_context_options,
     browser_launch_arguments,
 )
@@ -247,6 +251,37 @@ class CoreTests(unittest.TestCase):
                 "Descargar todo",
                 "https://wetransfer.com/downloads/a/b",
             )
+        )
+
+    def test_wetransfer_multistep_controls_are_recognized(self):
+        self.assertIn(
+            "ir a la transferencia",
+            TRANSFER_CONTINUE_WORDS,
+        )
+
+    def test_wetransfer_uses_compatible_multistep_browser(self):
+        self.assertTrue(
+            WETRANSFER_BROWSER_OPTIONS["compatibility_mode"]
+        )
+        self.assertEqual(
+            WETRANSFER_BROWSER_OPTIONS[
+                "wait_for_download_controls_seconds"
+            ],
+            75,
+        )
+        self.assertEqual(
+            WETRANSFER_BROWSER_OPTIONS["smart_browser_max_stages"],
+            5,
+        )
+        self.assertEqual(
+            WETRANSFER_BROWSER_OPTIONS["smart_browser_max_seconds"],
+            75,
+        )
+        self.assertEqual(
+            WETRANSFER_BROWSER_OPTIONS[
+                "async_download_grace_seconds"
+            ],
+            3,
         )
 
     def test_security_alert_and_html_assets_are_not_download_links(self):

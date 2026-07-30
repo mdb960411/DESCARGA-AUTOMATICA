@@ -25,6 +25,17 @@ MARKETING_PATH_TERMS = (
     "/upgrade",
 )
 
+TRANSFER_CONTINUE_WORDS = (
+    "continue",
+    "continuar",
+    "proceed",
+    "siguiente",
+    "next",
+    "ir a la transferencia",
+    "go to transfer",
+    "view transfer",
+)
+
 
 def normalized_action_text(value):
     text = unicodedata.normalize("NFKD", str(value or ""))

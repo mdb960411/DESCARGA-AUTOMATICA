@@ -1,4 +1,4 @@
-# Descarga Automática Gmail → Google Drive V4.5.2
+# Descarga Automática Gmail → Google Drive V4.5.3
 
 Job de Cloud Run para procesar correos de Gmail, descargar adjuntos y enlaces
 de transferencia, y guardar los archivos obtenidos en Google Drive.
@@ -7,13 +7,19 @@ Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V4.5.2
+## Cambios principales de V4.5.3
 
-- Espera hasta 45 segundos el botón real de WeTransfer.
+- Espera hasta 75 segundos el panel real de WeTransfer.
 - Descarta enlaces publicitarios como `Sé Ultimate`, planes y promociones,
   aunque su URL contenga la palabra `download`.
 - Reintenta WeTransfer hasta tres veces con un navegador limpio cuando la
   interfaz falla de forma transitoria.
+- WeTransfer utiliza su perfil compatible completo para cargar correctamente
+  el panel lateral que contiene `Abrir` y `Descargar`.
+- El navegador inteligente sigue hasta cinco etapas y reconoce
+  `Ir a la transferencia` antes del botón definitivo.
+- Conserva una descarga asíncrona aunque comience unos segundos después del
+  clic y no dentro del evento inmediato esperado por Chromium.
 - Reintenta TransferNow hasta tres veces con un navegador limpio cuando el
   primer control abre otra etapa pero el proveedor no inicia el archivo.
 - Reintenta el correo en ejecuciones posteriores antes de declararlo como
@@ -173,13 +179,13 @@ su etiqueta de estado y consérvalo como no leído.
 La firma esperada al iniciar esta versión es:
 
 ```text
-VERSION_APP: V4.5.2-TRANSFERNOW-RETRY-2026-07-30
+VERSION_APP: V4.5.3-WETRANSFER-MULTISTEP-2026-07-30
 ```
 
 ## Despliegue
 
-Para actualizar desde V4.5.1 consulta
-[ACTUALIZACION_V4_5_2.md](ACTUALIZACION_V4_5_2.md). Para un despliegue nuevo
+Para actualizar desde V4.5.2 consulta
+[ACTUALIZACION_V4_5_3.md](ACTUALIZACION_V4_5_3.md). Para un despliegue nuevo
 consulta [DESPLIEGUE_PASO_A_PASO.md](DESPLIEGUE_PASO_A_PASO.md).
 
 ## Seguridad
