@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
-from app.download_result import DownloadResult
+from app.config import Config
 from app.downloaders.direct import download_direct
 from app.downloaders.drive import download_drive
 from app.downloaders.providers import (
@@ -12,6 +12,7 @@ from app.downloaders.providers import (
     download_transfernow,
     download_wetransfer,
 )
+from app.retry_policy import download_with_retries
 from app.utils import url_for_log
 
 
@@ -45,8 +46,17 @@ def download_url(url, target_dir):
         "drive": download_drive,
         "direct": download_direct,
     }
-    raw_result = handlers[provider](url, target_dir)
-    return DownloadResult.from_value(
-        raw_result,
-        default_error="La descarga no se completó",
+    max_attempts = (
+        Config.wetransfer_download_attempts
+        if provider == "wetransfer"
+        else 1
+    )
+
+    return download_with_retries(
+        handlers[provider],
+        url,
+        target_dir,
+        provider=provider,
+        max_attempts=max_attempts,
+        retry_delay_seconds=Config.provider_retry_delay_seconds,
     )

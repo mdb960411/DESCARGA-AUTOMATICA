@@ -1,4 +1,4 @@
-# Despliegue paso a paso — V4.4
+# Despliegue paso a paso — V4.5
 
 Configuración preparada para:
 
@@ -69,6 +69,11 @@ EXCLUDE_IGNORED_MESSAGES=true
 MANUAL_LABEL=Descarga-Automatica-Manual
 EXCLUDE_MANUAL_MESSAGES=true
 BROWSER_ACTION_DIAGNOSTICS=true
+RETRY_LABEL=Descarga-Automatica-Reintento
+WETRANSFER_DOWNLOAD_ATTEMPTS=3
+PROVIDER_RETRY_DELAY_SECONDS=2
+TRANSIENT_RETRY_RUNS=3
+EXECUTION_LOCK_TTL_SECONDS=3600
 ```
 
 Configura `ALLOWED_EXTENSIONS` con:
@@ -116,7 +121,7 @@ inmediato**.
 3. Revisa que el log comience con:
 
    ```text
-   VERSION_APP: V4.4-FALSE-POSITIVE-GUARD-2026-07-29
+   VERSION_APP: V4.5-RETRY-IDEMPOTENCY-2026-07-29
    ```
 
 4. Para SendGB, el log esperado incluye:
@@ -172,6 +177,7 @@ el proveedor exige una validación humana que no terminó dentro de Cloud Run.
 
    ```text
    Perfil web moderno activo
+   Intento 1 de 3
    Interfaz de descarga lista
    Candidato inteligente etapa ...
    ```
@@ -191,7 +197,7 @@ el proveedor exige una validación humana que no terminó dentro de Cloud Run.
 
 ## 11. Correos sin archivos
 
-La V4.4 crea automáticamente la etiqueta
+La V4.5 crea automáticamente la etiqueta
 `Descarga-Automatica-Ignorado`. Un correo sin adjuntos o enlaces útiles:
 
 - no se considera error;
@@ -205,6 +211,8 @@ Para volver a evaluarlo, elimina esa etiqueta.
 - `OK`: no hubo errores ni intervenciones manuales.
 - `REQUIERE_ATENCION_MANUAL`: al menos un correo necesita ser descargado por
   una persona, pero no hubo fallos técnicos.
+- `REINTENTOS_PENDIENTES`: hubo un fallo técnico transitorio y el correo se
+  procesará nuevamente en la siguiente activación programada.
 - `COMPLETADO_CON_ERRORES`: uno o más proveedores o subidas fallaron.
 
 El contenedor puede terminar con `exit(0)` porque los errores se administran

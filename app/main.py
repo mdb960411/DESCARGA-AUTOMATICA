@@ -8,12 +8,14 @@ from app.downloaders import download_url
 from app.downloaders.filters import should_ignore_url
 from app.downloaders.manager import provider_for
 from app.drive_client import DriveClient
+from app.execution_lock import ExecutionLock
 from app.gmail_client import GmailClient
 from app.google_auth import get_credentials
-from app.status import execution_status
+from app.link_utils import source_link_fingerprint
+from app.status import execution_status, next_retry_attempt
 from app.utils import safe_error_message, safe_filename, url_for_log
 
-VERSION_APP = "V4.4-FALSE-POSITIVE-GUARD-2026-07-29"
+VERSION_APP = "V4.5-RETRY-IDEMPOTENCY-2026-07-29"
 
 
 def message_folder(base, index, sender, subject):
@@ -46,7 +48,6 @@ def create_execution_folder():
 def run():
     print(f"VERSION_APP: {VERSION_APP}")
     Config.validate()
-    execution_folder = create_execution_folder()
     summary = {
         "messages_found": 0,
         "messages_processed": 0,
@@ -55,6 +56,8 @@ def run():
         "messages_failed": 0,
         "messages_manual": 0,
         "messages_manual_partial": 0,
+        "messages_retry_pending": 0,
+        "messages_retry_partial": 0,
         "files_downloaded": 0,
         "files_uploaded": 0,
         "files_skipped_duplicate": 0,
@@ -62,10 +65,26 @@ def run():
         "links_manual": 0,
         "execution_status": "EN_EJECUCION",
         "manual_actions": [],
+        "retry_pending": [],
         "errors": [],
     }
 
+    execution_lock = ExecutionLock.acquire(
+        Config.download_dir,
+        Config.execution_lock_ttl_seconds,
+    )
+    if execution_lock is None:
+        summary["execution_status"] = "OMITIDA_EJECUCION_ACTIVA"
+        print(
+            "[EJECUCION] Ya existe otra ejecución activa; "
+            "esta ejecución finalizará sin procesar correos"
+        )
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return summary
+
+    execution_folder = None
     try:
+        execution_folder = create_execution_folder()
         credentials = get_credentials()
         gmail = GmailClient(credentials)
         drive = DriveClient(credentials)
@@ -78,11 +97,22 @@ def run():
         for index, message_id in enumerate(message_ids, 1):
             folder = None
             completed_files = 0
+            previous_retry_attempt = 0
             try:
                 message = gmail.get_message(message_id)
+                previous_retry_attempt = gmail.retry_attempt(message)
                 sender = gmail.sender_email(message)
                 subject = gmail.subject(message)
                 print(f"[CORREO] {sender} | {subject}")
+
+                if gmail.is_sender_confirmation(message):
+                    gmail.mark_ignored(message_id)
+                    summary["messages_ignored"] += 1
+                    print(
+                        "[CORREO] Estado=IGNORADO. "
+                        "Confirmación de envío del remitente"
+                    )
+                    continue
 
                 if not gmail.matches_rules(message):
                     gmail.mark_ignored(message_id)
@@ -96,6 +126,10 @@ def run():
                 downloaded = gmail.save_attachments(
                     message_id, message, folder
                 )
+                source_keys = {
+                    path: None
+                    for path in downloaded
+                }
                 links = gmail.extract_links(message)
                 link_failures = []
                 link_manual = []
@@ -133,8 +167,12 @@ def run():
                     attempted_links += 1
                     result = download_url(url, folder)
                     downloaded.extend(result.paths)
+                    transfer_key = source_link_fingerprint(url)
+                    for path in result.paths:
+                        source_keys[path] = transfer_key
 
                     failure = None
+                    failure_retryable = False
                     if result.errors:
                         normalized_errors = [
                             safe_error_message(error)
@@ -151,6 +189,7 @@ def run():
                             f"{provider}:{url_for_log(url)}"
                             f" ({details})"
                         )
+                        failure_retryable = result.retryable
 
                     manual_request = None
                     if result.manual_actions:
@@ -178,7 +217,9 @@ def run():
                             alternative_failures.setdefault(
                                 provider,
                                 [],
-                            ).append(failure)
+                            ).append(
+                                (failure, failure_retryable)
+                            )
                         if manual_request:
                             alternative_manual.setdefault(
                                 provider,
@@ -186,7 +227,9 @@ def run():
                             ).append(manual_request)
                     else:
                         if failure:
-                            link_failures.append(failure)
+                            link_failures.append(
+                                (failure, failure_retryable)
+                            )
                             summary["links_failed"] += 1
                         if manual_request:
                             link_manual.append(manual_request)
@@ -213,7 +256,11 @@ def run():
 
                 for path in downloaded:
                     try:
-                        result = drive.upload_file(path, message_id)
+                        result = drive.upload_file(
+                            path,
+                            message_id,
+                            source_transfer_key=source_keys.get(path),
+                        )
                         completed_files += 1
                         if result.get("skipped"):
                             summary["files_skipped_duplicate"] += 1
@@ -224,9 +271,19 @@ def run():
                             f"{path.name}: {safe_error_message(exc)}"
                         )
 
+                failure_details = [
+                    *(
+                        (f"Descarga fallida {item}", retryable)
+                        for item, retryable in link_failures
+                    ),
+                    *(
+                        (f"Subida fallida {item}", True)
+                        for item in upload_failures
+                    ),
+                ]
                 failures = [
-                    *(f"Descarga fallida {item}" for item in link_failures),
-                    *(f"Subida fallida {item}" for item in upload_failures),
+                    detail
+                    for detail, _ in failure_details
                 ]
                 manual_requests = [
                     f"Intervención manual {item}"
@@ -244,6 +301,39 @@ def run():
 
                 if failures:
                     partial = completed_files > 0
+                    retry_attempt = next_retry_attempt(
+                        previous_retry_attempt,
+                        retryable=all(
+                            retryable
+                            for _, retryable in failure_details
+                        ),
+                        max_runs=Config.transient_retry_runs,
+                    )
+                    if retry_attempt is not None:
+                        gmail.mark_retry(
+                            message_id,
+                            retry_attempt,
+                            partial=partial,
+                        )
+                        summary["messages_retry_pending"] += 1
+                        if partial:
+                            summary["messages_retry_partial"] += 1
+                        retry_message = (
+                            f"Mensaje {message_id}: intento programado "
+                            f"{retry_attempt + 1} de "
+                            f"{Config.transient_retry_runs}: "
+                            + " | ".join(failures)
+                        )
+                        summary["retry_pending"].append(retry_message)
+                        print(
+                            "[CORREO] Estado=REINTENTO_PENDIENTE. "
+                            f"Próxima ejecución "
+                            f"{retry_attempt + 1}/"
+                            f"{Config.transient_retry_runs}. "
+                            + " | ".join(failures)
+                        )
+                        continue
+
                     gmail.mark_failed(message_id, partial=partial)
                     status = "PARCIAL" if partial else "ERROR"
                     print(
@@ -330,6 +420,7 @@ def run():
             f"[RESUMEN] Estado={summary['execution_status']} "
             f"procesados={summary['messages_processed']} "
             f"manuales={summary['messages_manual']} "
+            f"reintentos={summary['messages_retry_pending']} "
             f"parciales={summary['messages_partial']} "
             f"errores={summary['messages_failed']} "
             f"ignorados={summary['messages_ignored']}"
@@ -337,7 +428,9 @@ def run():
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return summary
     finally:
-        shutil.rmtree(execution_folder, ignore_errors=True)
+        if execution_folder is not None:
+            shutil.rmtree(execution_folder, ignore_errors=True)
+        execution_lock.release()
 
 
 def main():

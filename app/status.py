@@ -12,4 +12,16 @@ def execution_status(summary):
         return "COMPLETADO_CON_ERRORES"
     if summary["messages_manual"]:
         return "REQUIERE_ATENCION_MANUAL"
+    if summary.get("messages_retry_pending", 0):
+        return "REINTENTOS_PENDIENTES"
     return "OK"
+
+
+def next_retry_attempt(previous_attempt, retryable, max_runs):
+    if not retryable:
+        return None
+
+    next_attempt = max(0, previous_attempt) + 1
+    if next_attempt >= max_runs:
+        return None
+    return next_attempt

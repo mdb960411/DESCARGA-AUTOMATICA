@@ -1,4 +1,4 @@
-# Descarga Automática Gmail → Google Drive V4.4
+# Descarga Automática Gmail → Google Drive V4.5
 
 Job de Cloud Run para procesar correos de Gmail, descargar adjuntos y enlaces
 de transferencia, y guardar los archivos obtenidos en Google Drive.
@@ -7,7 +7,17 @@ Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V4.4
+## Cambios principales de V4.5
+
+- Reintenta WeTransfer hasta tres veces con un navegador limpio cuando la
+  interfaz falla de forma transitoria.
+- Reintenta el correo en ejecuciones posteriores antes de declararlo como
+  error definitivo.
+- Reconoce duplicados por mensaje, transferencia y contenido.
+- Verifica que Gmail haya aplicado efectivamente cada etiqueta de estado.
+- Ignora confirmaciones de envío de TransferNow.
+- Evita ejecuciones superpuestas cuando Cloud Scheduler activa el job cada
+  15 minutos.
 
 - Usa un volumen de Cloud Storage para no guardar archivos grandes en la
   memoria de Cloud Run.
@@ -100,6 +110,7 @@ ERROR_LABEL=Descarga-Automatica-Error
 PARTIAL_LABEL=Descarga-Automatica-Parcial
 IGNORED_LABEL=Descarga-Automatica-Ignorado
 MANUAL_LABEL=Descarga-Automatica-Manual
+RETRY_LABEL=Descarga-Automatica-Reintento
 MAX_EMAILS=20
 MAX_FILE_SIZE_MB=8192
 DOWNLOAD_CHUNK_SIZE_MB=4
@@ -113,6 +124,10 @@ EXCLUDE_MANUAL_MESSAGES=true
 BROWSER_ACTION_DIAGNOSTICS=true
 ENABLE_SENDGB=true
 MARK_AS_READ=true
+WETRANSFER_DOWNLOAD_ATTEMPTS=3
+PROVIDER_RETRY_DELAY_SECONDS=2
+TRANSIENT_RETRY_RUNS=3
+EXECUTION_LOCK_TTL_SECONDS=3600
 ```
 
 Filtros opcionales:
@@ -142,14 +157,24 @@ a producción gráfica. Para configurarla manualmente:
 - `Descarga-Automatica-Manual`: el enlace sigue requiriendo intervención
   humana, por ejemplo cuando Cloudflare no completa su validación en Cloud
   Run. Se conserva como no leído.
+- `Descarga-Automatica-Reintento-1` y `-2`: el proveedor presentó un fallo
+  técnico y el mensaje se procesará nuevamente de forma automática.
 
 Los mensajes con etiquetas de error, manual o ignorado se excluyen de
 ejecuciones posteriores. Para reintentar un correo, corrige la causa, elimina
 su etiqueta de estado y consérvalo como no leído.
 
+La firma esperada al iniciar esta versión es:
+
+```text
+VERSION_APP: V4.5-RETRY-IDEMPOTENCY-2026-07-29
+```
+
 ## Despliegue
 
-Consulta [DESPLIEGUE_PASO_A_PASO.md](DESPLIEGUE_PASO_A_PASO.md).
+Para actualizar desde V4.4 consulta
+[ACTUALIZACION_V4_5.md](ACTUALIZACION_V4_5.md). Para un despliegue nuevo
+consulta [DESPLIEGUE_PASO_A_PASO.md](DESPLIEGUE_PASO_A_PASO.md).
 
 ## Seguridad
 

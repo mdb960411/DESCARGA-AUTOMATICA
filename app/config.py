@@ -55,6 +55,10 @@ class Config:
     partial_label = os.getenv("PARTIAL_LABEL", "Descarga-Automatica-Parcial")
     ignored_label = os.getenv("IGNORED_LABEL", "Descarga-Automatica-Ignorado")
     manual_label = os.getenv("MANUAL_LABEL", "Descarga-Automatica-Manual")
+    retry_label = os.getenv(
+        "RETRY_LABEL",
+        "Descarga-Automatica-Reintento",
+    )
     only_from = os.getenv("ONLY_FROM", "").strip().lower()
     only_from_domain = os.getenv("ONLY_FROM_DOMAIN", "").strip().lower()
     keyword = os.getenv("KEYWORD", "").strip().lower()
@@ -78,6 +82,19 @@ class Config:
     upload_chunk_size_mb = env_int("UPLOAD_CHUNK_SIZE_MB", 8)
     upload_retries = env_int("UPLOAD_RETRIES", 3)
     download_timeout_seconds = env_int("DOWNLOAD_TIMEOUT_SECONDS", 1800)
+    wetransfer_download_attempts = env_int(
+        "WETRANSFER_DOWNLOAD_ATTEMPTS",
+        3,
+    )
+    provider_retry_delay_seconds = env_int(
+        "PROVIDER_RETRY_DELAY_SECONDS",
+        2,
+    )
+    transient_retry_runs = env_int("TRANSIENT_RETRY_RUNS", 3)
+    execution_lock_ttl_seconds = env_int(
+        "EXECUTION_LOCK_TTL_SECONDS",
+        3600,
+    )
 
     _allowed_extensions_raw = os.getenv("ALLOWED_EXTENSIONS", "").strip()
     allowed_extensions = (
@@ -126,11 +143,25 @@ class Config:
             ("DOWNLOAD_CHUNK_SIZE_MB", cls.download_chunk_size_mb),
             ("UPLOAD_CHUNK_SIZE_MB", cls.upload_chunk_size_mb),
             ("DOWNLOAD_TIMEOUT_SECONDS", cls.download_timeout_seconds),
+            (
+                "WETRANSFER_DOWNLOAD_ATTEMPTS",
+                cls.wetransfer_download_attempts,
+            ),
+            ("TRANSIENT_RETRY_RUNS", cls.transient_retry_runs),
+            (
+                "EXECUTION_LOCK_TTL_SECONDS",
+                cls.execution_lock_ttl_seconds,
+            ),
         ]
         invalid = [name for name, value in positive_values if value <= 0]
         if invalid:
             raise RuntimeError(
                 "Estas variables deben ser mayores que cero: " + ", ".join(invalid)
+            )
+
+        if cls.provider_retry_delay_seconds < 0:
+            raise RuntimeError(
+                "PROVIDER_RETRY_DELAY_SECONDS no puede ser negativo"
             )
 
         # Google Drive exige que los fragmentos de una subida reanudable sean

@@ -1,5 +1,22 @@
 # Historial de cambios
 
+## V4.5 — Reintentos, idempotencia y ejecución programada
+
+- WeTransfer realiza hasta tres intentos aislados con navegadores nuevos ante
+  fallos transitorios de su interfaz.
+- Los errores técnicos se reintentan en ejecuciones posteriores antes de
+  etiquetar definitivamente el mensaje como error.
+- Nuevas etiquetas automáticas
+  `Descarga-Automatica-Reintento-1` y
+  `Descarga-Automatica-Reintento-2`.
+- Drive reconoce la misma transferencia aunque llegue con otro ID de correo.
+- Compatibilidad con archivos de V4.4 mediante comparación segura de nombre,
+  tamaño y MD5.
+- Verificación posterior de las etiquetas aplicadas por Gmail.
+- Confirmaciones de envío de TransferNow ignoradas automáticamente.
+- Bloqueo persistente para evitar ejecuciones superpuestas de Cloud Scheduler.
+- Nueva firma `V4.5-RETRY-IDEMPOTENCY-2026-07-29`.
+
 ## V4.4 — Protección contra falsos archivos
 
 - Los recursos incrustados del HTML ya no se interpretan como enlaces
