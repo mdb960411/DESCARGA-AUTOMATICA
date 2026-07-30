@@ -15,7 +15,7 @@ from app.link_utils import source_link_fingerprint
 from app.status import execution_status, next_retry_attempt
 from app.utils import safe_error_message, safe_filename, url_for_log
 
-VERSION_APP = "V4.5.3-WETRANSFER-MULTISTEP-2026-07-30"
+VERSION_APP = "V4.5.4-SENDALLFILES-AUTO-RETRY-2026-07-30"
 
 
 def message_folder(base, index, sender, subject):

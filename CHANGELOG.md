@@ -1,5 +1,16 @@
 # Historial de cambios
 
+## V4.5.4 — Reintento automático de SendAllFiles
+
+- Una validación temporalmente pendiente de Cloudflare deja de clasificarse
+  inmediatamente como descarga manual.
+- SendAllFiles realiza hasta tres intentos aislados con navegadores nuevos.
+- Si Turnstile todavía no termina, el mensaje conserva un estado de reintento
+  automático para futuras ejecuciones.
+- Nueva variable `SENDALLFILES_DOWNLOAD_ATTEMPTS`, con valor predeterminado
+  `3`.
+- Nueva firma `V4.5.4-SENDALLFILES-AUTO-RETRY-2026-07-30`.
+
 ## V4.5.3 — Panel y descarga multipaso de WeTransfer
 
 - WeTransfer usa el perfil compatible completo para que su aplicación dinámica

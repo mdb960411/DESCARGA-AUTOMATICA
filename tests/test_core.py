@@ -9,6 +9,7 @@ from app.action_policy import (
     is_marketing_action,
 )
 from app.browser_profile import (
+    SENDALLFILES_BROWSER_OPTIONS,
     USER_AGENT,
     WETRANSFER_BROWSER_OPTIONS,
     browser_context_options,
@@ -67,6 +68,22 @@ class CoreTests(unittest.TestCase):
 
     def test_transfernow_retries_default_to_three(self):
         self.assertEqual(Config.transfernow_download_attempts, 3)
+
+    def test_sendallfiles_retries_default_to_three(self):
+        self.assertEqual(Config.sendallfiles_download_attempts, 3)
+
+    def test_sendallfiles_uses_fresh_browser_retries(self):
+        self.assertEqual(
+            Config.download_attempts_for("sendallfiles"),
+            Config.sendallfiles_download_attempts,
+        )
+
+    def test_sendallfiles_pending_cloudflare_is_not_manual(self):
+        self.assertFalse(
+            SENDALLFILES_BROWSER_OPTIONS[
+                "manual_on_pending_challenge"
+            ]
+        )
 
     def test_email_asset_is_filtered_but_graphic_file_is_not(self):
         filters = load_filters()

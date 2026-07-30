@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from app.browser_profile import WETRANSFER_BROWSER_OPTIONS
+from app.browser_profile import (
+    SENDALLFILES_BROWSER_OPTIONS,
+    WETRANSFER_BROWSER_OPTIONS,
+)
 from app.config import Config
 from app.downloaders.browser import download_with_browser
 
@@ -109,13 +112,7 @@ def download_sendallfiles(url, target_dir):
             "a[download]",
         ],
         download_all=True,
-        wait_for_download_controls_seconds=60,
-        compatibility_mode=True,
-        search_all_frames=True,
-        # Conserva la sesión validada por Cloudflare mientras Chromium escribe
-        # directamente en el volumen externo montado.
-        allow_http_handoff=False,
-        manual_on_pending_challenge=True,
+        **SENDALLFILES_BROWSER_OPTIONS,
     )
 
 

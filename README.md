@@ -1,4 +1,4 @@
-# Descarga Automática Gmail → Google Drive V4.5.3
+# Descarga Automática Gmail → Google Drive V4.5.4
 
 Job de Cloud Run para procesar correos de Gmail, descargar adjuntos y enlaces
 de transferencia, y guardar los archivos obtenidos en Google Drive.
@@ -7,7 +7,16 @@ Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V4.5.3
+## Cambios principales de V4.5.4
+
+- SendAllFiles ya no interpreta una validación temporal de Cloudflare como
+  una exigencia de descarga manual.
+- Abre hasta tres sesiones independientes de Chromium cuando Turnstile queda
+  pendiente o el botón todavía no aparece.
+- Si las tres sesiones fallan, conserva el correo en la cola de reintentos
+  automáticos en lugar de excluirlo con la etiqueta manual.
+- Nueva variable `SENDALLFILES_DOWNLOAD_ATTEMPTS`, con valor predeterminado
+  `3`.
 
 - Espera hasta 75 segundos el panel real de WeTransfer.
 - Descarta enlaces publicitarios como `Sé Ultimate`, planes y promociones,
@@ -57,9 +66,8 @@ comprimidos.
   directamente sobre el volumen externo.
 - Registra un diagnóstico seguro si la interfaz no aparece, sin publicar
   enlaces, tokens ni nombres de archivos.
-- Cuando Cloudflare no termina la validación de SendAllFiles, etiqueta el
-  correo como `Descarga-Automatica-Manual` en vez de confundirlo con un enlace
-  caducado.
+- Cuando Cloudflare no termina temporalmente la validación de SendAllFiles,
+  abre una sesión nueva y mantiene el correo en reintento automático.
 - WeTransfer, TransferNow y SwissTransfer usan el User-Agent nativo de
   Chromium, buscan controles dentro de marcos y soportan interfaces de varios
   pasos.
@@ -137,6 +145,7 @@ ENABLE_SENDGB=true
 MARK_AS_READ=true
 WETRANSFER_DOWNLOAD_ATTEMPTS=3
 TRANSFERNOW_DOWNLOAD_ATTEMPTS=3
+SENDALLFILES_DOWNLOAD_ATTEMPTS=3
 PROVIDER_RETRY_DELAY_SECONDS=2
 TRANSIENT_RETRY_RUNS=3
 EXECUTION_LOCK_TTL_SECONDS=3600
@@ -166,9 +175,8 @@ a producción gráfica. Para configurarla manualmente:
 - `Descarga-Automatica-Error`: el mensaje requiere revisión.
 - `Descarga-Automatica-Ignorado`: el correo no contenía archivos útiles o no
   cumplía las reglas. Se conserva como no leído.
-- `Descarga-Automatica-Manual`: el enlace sigue requiriendo intervención
-  humana, por ejemplo cuando Cloudflare no completa su validación en Cloud
-  Run. Se conserva como no leído.
+- `Descarga-Automatica-Manual`: reservado para una exigencia humana real del
+  proveedor. Se conserva como no leído.
 - `Descarga-Automatica-Reintento-1` y `-2`: el proveedor presentó un fallo
   técnico y el mensaje se procesará nuevamente de forma automática.
 
@@ -179,13 +187,13 @@ su etiqueta de estado y consérvalo como no leído.
 La firma esperada al iniciar esta versión es:
 
 ```text
-VERSION_APP: V4.5.3-WETRANSFER-MULTISTEP-2026-07-30
+VERSION_APP: V4.5.4-SENDALLFILES-AUTO-RETRY-2026-07-30
 ```
 
 ## Despliegue
 
-Para actualizar desde V4.5.2 consulta
-[ACTUALIZACION_V4_5_3.md](ACTUALIZACION_V4_5_3.md). Para un despliegue nuevo
+Para actualizar desde V4.5.3 consulta
+[ACTUALIZACION_V4_5_4.md](ACTUALIZACION_V4_5_4.md). Para un despliegue nuevo
 consulta [DESPLIEGUE_PASO_A_PASO.md](DESPLIEGUE_PASO_A_PASO.md).
 
 ## Seguridad

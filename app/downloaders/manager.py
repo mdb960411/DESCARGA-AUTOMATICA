@@ -46,10 +46,7 @@ def download_url(url, target_dir):
         "drive": download_drive,
         "direct": download_direct,
     }
-    max_attempts = {
-        "wetransfer": Config.wetransfer_download_attempts,
-        "transfernow": Config.transfernow_download_attempts,
-    }.get(provider, 1)
+    max_attempts = Config.download_attempts_for(provider)
 
     return download_with_retries(
         handlers[provider],

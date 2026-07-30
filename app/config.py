@@ -90,6 +90,10 @@ class Config:
         "TRANSFERNOW_DOWNLOAD_ATTEMPTS",
         3,
     )
+    sendallfiles_download_attempts = env_int(
+        "SENDALLFILES_DOWNLOAD_ATTEMPTS",
+        3,
+    )
     provider_retry_delay_seconds = env_int(
         "PROVIDER_RETRY_DELAY_SECONDS",
         2,
@@ -129,6 +133,14 @@ class Config:
         return cls.upload_chunk_size_mb * 1024 * 1024
 
     @classmethod
+    def download_attempts_for(cls, provider):
+        return {
+            "wetransfer": cls.wetransfer_download_attempts,
+            "transfernow": cls.transfernow_download_attempts,
+            "sendallfiles": cls.sendallfiles_download_attempts,
+        }.get(provider, 1)
+
+    @classmethod
     def validate(cls):
         missing = []
         for name, value in [
@@ -154,6 +166,10 @@ class Config:
             (
                 "TRANSFERNOW_DOWNLOAD_ATTEMPTS",
                 cls.transfernow_download_attempts,
+            ),
+            (
+                "SENDALLFILES_DOWNLOAD_ATTEMPTS",
+                cls.sendallfiles_download_attempts,
             ),
             ("TRANSIENT_RETRY_RUNS", cls.transient_retry_runs),
             (
