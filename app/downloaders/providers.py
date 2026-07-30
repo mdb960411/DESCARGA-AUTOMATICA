@@ -29,6 +29,10 @@ def download_wetransfer(url, target_dir):
         target_dir,
         "WETRANSFER",
         [
+            "button:text-is('Descargar todo')",
+            "button:text-is('Download all')",
+            "button:text-is('Descargar')",
+            "button:text-is('Download')",
             "button[data-testid='download-button']",
             "[data-testid*='download' i]",
             "[aria-label*='download' i]",
@@ -47,6 +51,10 @@ def download_wetransfer(url, target_dir):
         native_user_agent=True,
         allow_service_workers=True,
         search_all_frames=True,
+        # WeTransfer puede invalidar su URL de un solo uso cuando Chromium
+        # cancela la descarga para cederla a requests. Se conserva la descarga
+        # nativa directamente sobre el bucket montado.
+        allow_http_handoff=False,
     )
 
 
@@ -56,6 +64,12 @@ def download_transfernow(url, target_dir):
         target_dir,
         "TRANSFERNOW",
         [
+            "a:text-is('Download file')",
+            "a:text-is('Descargar archivo')",
+            "button:text-is('Download file')",
+            "button:text-is('Descargar archivo')",
+            "button:text-is('Descargar todo')",
+            "button:text-is('Download all')",
             "[data-testid*='download' i]",
             "[aria-label*='download' i]",
             "[aria-label*='descargar' i]",

@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 from googleapiclient.discovery import build
 
 from app.config import Config
+from app.link_policy import is_useful_email_link
 from app.link_utils import canonical_link_key
 from app.utils import decode_base64url, extension_allowed, safe_filename, unique_path
 
@@ -147,60 +148,12 @@ class GmailClient:
         return urlunsplit((parts.scheme.lower(), netloc, parts.path, parts.query, parts.fragment))
 
     @staticmethod
-    def _is_useful_link(url):
-        parts = urlsplit(url)
-        host = (parts.hostname or "").lower()
-        path = parts.path or "/"
-
-        # Known transfer URLs: retain only links that identify a transfer.
-        if host in {"we.tl"}:
-            return path.startswith("/t-")
-        if host.endswith("wetransfer.com"):
-            return path.startswith("/downloads/")
-        if host.endswith("sendgb.com"):
-            blocked_prefixes = (
-                "/images/",
-                "/css/",
-                "/js/",
-                "/assets/",
-            )
-            return (
-                path.strip("/") != ""
-                and not path.lower().startswith(blocked_prefixes)
-            )
-        if host.endswith("sendallfiles.com"):
-            return "/d/" in path
-        if host.endswith("transfernow.net"):
-            return path.startswith("/dl/")
-
-        # Google Drive file links remain useful.
-        if host == "drive.google.com":
-            return any(token in url for token in ("/file/d/", "open?id=", "uc?"))
-
-        # Skip common navigation/tracking links.
-        blocked_hosts = {
-            "g.co",
-            "notifications.googleapis.com",
-            "accounts.google.com",
-            "support.google.com",
-        }
-        if host in blocked_hosts:
-            return False
-
-        blocked_path_terms = (
-            "unsubscribe",
-            "notification-settings",
-            "help-center",
-            "/legal/",
-            "/terms",
-            "/privacy",
-            "user-reports",
-            "/contact",
+    def _is_useful_link(url, explicit_download=False):
+        return is_useful_email_link(
+            url,
+            Config.allowed_extensions,
+            explicit_download=explicit_download,
         )
-        if any(term in path.lower() for term in blocked_path_terms):
-            return False
-
-        return True
 
     def extract_links(self, message):
         text, html_body = self.extract_body(message)
@@ -210,28 +163,59 @@ class GmailClient:
         headers = self.headers(message)
         for name in ("x-wt-download-url",):
             if headers.get(name):
-                candidates.append(headers[name])
+                candidates.append((headers[name], True, 0))
 
         if html_body:
             soup = BeautifulSoup(html_body, "html.parser")
-            candidates.extend(
-                anchor.get("href")
-                for anchor in soup.find_all("a", href=True)
+            for anchor in soup.find_all("a", href=True):
+                anchor_text = anchor.get_text(" ", strip=True).casefold()
+                explicit_download = (
+                    anchor.has_attr("download")
+                    or any(
+                        term in anchor_text
+                        for term in (
+                            "download",
+                            "descargar",
+                            "télécharger",
+                        )
+                    )
+                )
+                candidates.append(
+                    (anchor.get("href"), explicit_download, 1)
+                )
+
+        # Solo se leen URLs visibles del cuerpo de texto. Escanear el HTML
+        # completo incorporaba src de logos, píxeles y recursos de cookies.
+        candidates.extend(
+            (candidate, False, 2)
+            for candidate in re.findall(
+                r'https?://[^\s<>"\']+',
+                text or "",
+                re.I,
             )
+        )
 
-        # Read visible URLs from both plain text and HTML as a fallback.
-        for source in (text, html_body):
-            candidates.extend(re.findall(r'https?://[^\s<>"\']+', source or "", re.I))
-
-        links = set()
-        for candidate in candidates:
+        links = {}
+        for candidate, explicit_download, priority in candidates:
             cleaned = self._clean_url(candidate)
-            if cleaned and self._is_useful_link(cleaned):
-                links.add(cleaned)
+            if (
+                cleaned
+                and self._is_useful_link(
+                    cleaned,
+                    explicit_download=explicit_download,
+                )
+            ):
+                links[cleaned] = min(
+                    priority,
+                    links.get(cleaned, priority),
+                )
 
         # Prefiere las URL canónicas cortas y evita probar varias variantes del
         # mismo envío de WeTransfer.
-        ordered_links = sorted(links, key=lambda item: (len(item), item))
+        ordered_links = sorted(
+            links,
+            key=lambda item: (links[item], len(item), item),
+        )
         deduplicated = []
         seen_keys = set()
         for link in ordered_links:

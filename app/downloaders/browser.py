@@ -22,13 +22,16 @@ from app.downloaders.common import (
     save_playwright_download,
 )
 from app.downloaders.direct import download_direct
+from app.response_rules import (
+    best_file_response,
+    browser_file_response_score,
+)
 from app.downloaders.smart_browser import (
     try_smart_download,
     visible_action_descriptions,
 )
 from app.status import manual_action_for_reason
 from app.utils import (
-    extension_allowed,
     safe_error_message,
     safe_filename,
     url_for_log,
@@ -61,6 +64,12 @@ BROWSER_TOTAL_TIMEOUT_SECONDS = 120
 MAX_REQUEST_RECORDS = 2_000
 MAX_FILE_RESPONSE_RECORDS = 50
 MAX_MULTI_DOWNLOAD_CONTROLS = 50
+UNSAFE_ACTION_DOMAINS = {
+    "adservice.google.com",
+    "doubleclick.net",
+    "google.com",
+    "googlesyndication.com",
+}
 
 
 @dataclass
@@ -73,6 +82,116 @@ class HttpDownloadHandoff:
     method: str = "GET"
     request_body: str | None = None
     headers: dict | None = None
+
+
+def _domain_matches(host, domain):
+    return host == domain or host.endswith(f".{domain}")
+
+
+def _unsafe_action_url(url):
+    try:
+        host = (urlparse(url).hostname or "").casefold()
+    except Exception:
+        return False
+    return any(
+        _domain_matches(host, domain)
+        for domain in UNSAFE_ACTION_DOMAINS
+    )
+
+
+def _locator_action_allowed(locator):
+    try:
+        metadata = locator.evaluate(
+            """
+            element => ({
+              href: element.href || element.getAttribute('href') || '',
+              text: (
+                element.innerText ||
+                element.value ||
+                element.textContent ||
+                ''
+              ).trim(),
+              aria: element.getAttribute('aria-label') || ''
+            })
+            """
+        )
+    except Exception:
+        return True
+
+    href = str(metadata.get("href") or "")
+    label = " ".join(
+        (
+            str(metadata.get("text") or ""),
+            str(metadata.get("aria") or ""),
+        )
+    ).casefold()
+    if href and _unsafe_action_url(href):
+        return False
+    if (
+        "file download service" in label
+        or "search results for" in label
+        or "advertisement" in label
+        or "anuncio" in label
+    ):
+        return False
+    return True
+
+
+def _page_after_timed_out_click(
+    page,
+    pages_before,
+    url_before,
+    provider,
+):
+    try:
+        context = page.context
+        new_pages = [
+            candidate
+            for candidate in context.pages
+            if id(candidate) not in pages_before
+            and not candidate.is_closed()
+        ]
+    except Exception:
+        new_pages = []
+
+    if new_pages:
+        candidate = new_pages[-1]
+        try:
+            candidate.wait_for_load_state(
+                "domcontentloaded",
+                timeout=8_000,
+            )
+        except Exception:
+            pass
+        if _unsafe_action_url(candidate.url):
+            print(
+                f"[{provider}] Ventana publicitaria descartada"
+            )
+            try:
+                candidate.close()
+            except Exception:
+                pass
+            return None
+        return candidate
+
+    try:
+        current_url = page.url
+    except Exception:
+        return None
+
+    if current_url == url_before:
+        return None
+    if _unsafe_action_url(current_url):
+        print(f"[{provider}] Navegación publicitaria descartada")
+        try:
+            page.go_back(
+                wait_until="domcontentloaded",
+                timeout=10_000,
+            )
+        except Exception:
+            pass
+        return None
+    return page
 
 
 def _try_locator_download(page, locator, timeout=SELECTOR_DOWNLOAD_TIMEOUT_MS):
@@ -91,6 +210,8 @@ def _try_selector_download(
     for root_name, root in _browser_roots(page, search_all_frames):
         locator = root.locator(selector).first
         if not locator.count() or not locator.is_visible(timeout=1500):
+            continue
+        if not _locator_action_allowed(locator):
             continue
         return (
             _try_locator_download(page, locator, timeout=timeout),
@@ -156,71 +277,16 @@ def _remember_file_response(response, records):
             name.lower(): value
             for name, value in response.headers.items()
         }
-        content_type = headers.get("content-type", "").casefold()
-        disposition = headers.get(
-            "content-disposition",
-            "",
-        ).casefold()
         request = response.request
         resource_type = request.resource_type
         url = response.url
-        url_lower = url.casefold()
-        suffix = Path(urlparse(url).path).suffix.casefold()
-
-        blocked_types = (
-            "text/html",
-            "application/json",
-            "javascript",
-            "text/css",
-            "font/",
+        score = browser_file_response_score(
+            url,
+            headers,
+            resource_type,
+            Config.allowed_extensions,
         )
-        if any(item in content_type for item in blocked_types):
-            return
-
-        strong_file_types = (
-            "application/zip",
-            "application/x-zip",
-            "application/x-rar",
-            "application/pdf",
-            "application/postscript",
-            "application/illustrator",
-            "image/vnd.adobe.photoshop",
-        )
-        allowed_suffix = (
-            bool(suffix)
-            and extension_allowed(
-                f"archivo{suffix}",
-                Config.allowed_extensions,
-            )
-        )
-        download_hint = (
-            "download" in url_lower
-            or "descarg" in url_lower
-        )
-        octet_stream_file = (
-            "application/octet-stream" in content_type
-            and (
-                "attachment" in disposition
-                or download_hint
-                or allowed_suffix
-            )
-        )
-        file_like = (
-            "attachment" in disposition
-            or any(item in content_type for item in strong_file_types)
-            or octet_stream_file
-            or (
-                download_hint
-                and resource_type
-                in {"document", "fetch", "xhr", "other"}
-            )
-            or (
-                allowed_suffix
-                and resource_type
-                in {"document", "fetch", "xhr", "other"}
-            )
-        )
-        if not file_like:
+        if score is None:
             return
 
         if len(records) >= MAX_FILE_RESPONSE_RECORDS:
@@ -232,6 +298,7 @@ def _remember_file_response(response, records):
             "method": request.method,
             "request_body": request.post_data,
             "headers": _safe_request_headers(request.headers),
+            "score": score,
         }
     except Exception:
         pass
@@ -347,6 +414,90 @@ def _click_consent(page, search_all_frames):
     return False
 
 
+def _normalized_text(value):
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(
+        character
+        for character in text
+        if not unicodedata.combining(character)
+    ).casefold()
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _advance_provider_gate(
+    page,
+    provider,
+    search_all_frames,
+):
+    if provider != "WETRANSFER":
+        return False
+
+    gate_terms = (
+        "para continuar, acepta nuestras condiciones",
+        "to continue, accept our terms",
+        "to continue, agree to our terms",
+    )
+    action_selectors = (
+        "button:text-is('Aceptar y continuar')",
+        "button:text-is('Acepto')",
+        "button:text-is('Continuar')",
+        "button:text-is('I agree')",
+        "button:text-is('Accept and continue')",
+        "button:text-is('Continue')",
+    )
+
+    for root_name, root in _browser_roots(
+        page,
+        search_all_frames,
+    ):
+        try:
+            body_text = root.locator("body").inner_text(
+                timeout=1_000,
+            )
+        except Exception:
+            continue
+        if not any(
+            term in _normalized_text(body_text)
+            for term in gate_terms
+        ):
+            continue
+
+        changed = False
+        try:
+            checkboxes = root.locator(
+                "input[type='checkbox'], [role='checkbox']"
+            )
+            for index in range(min(checkboxes.count(), 4)):
+                checkbox = checkboxes.nth(index)
+                if not checkbox.is_visible(timeout=350):
+                    continue
+                try:
+                    if checkbox.is_checked(timeout=350):
+                        continue
+                except Exception:
+                    pass
+                checkbox.click(timeout=3_000)
+                changed = True
+        except Exception:
+            pass
+
+        if click_if_visible(root, action_selectors):
+            changed = True
+
+        if changed:
+            print(
+                f"[{provider}] Condiciones de la transferencia "
+                f"aceptadas ({root_name})"
+            )
+            try:
+                page.wait_for_timeout(1_000)
+            except Exception:
+                pass
+            return True
+
+    return False
+
+
 def _wait_for_download_controls(
     page,
     selectors,
@@ -361,6 +512,11 @@ def _wait_for_download_controls(
 
     while True:
         _click_consent(page, search_all_frames)
+        _advance_provider_gate(
+            page,
+            provider,
+            search_all_frames,
+        )
 
         for root_name, root in _browser_roots(page, search_all_frames):
             for selector in selectors:
@@ -736,6 +892,11 @@ def download_with_browser(
                         )
 
                 _click_consent(page, search_all_frames)
+                _advance_provider_gate(
+                    page,
+                    provider,
+                    search_all_frames,
+                )
                 page.wait_for_timeout(750)
 
                 if (
@@ -759,6 +920,11 @@ def download_with_browser(
                             f"[{provider}] Interfaz de descarga lista "
                             f"({ready_root_name})"
                         )
+
+                # Descarta imágenes, analítica y precargas de la visita inicial.
+                # Desde aquí se registran únicamente respuestas producidas al
+                # interactuar con controles de descarga.
+                file_response_records.clear()
 
                 if download_all:
                     (
@@ -836,6 +1002,16 @@ def download_with_browser(
                             break
 
                         try:
+                            pages_before = {
+                                id(candidate_page)
+                                for candidate_page in page.context.pages
+                            }
+                            url_before = page.url
+                        except Exception:
+                            pages_before = set()
+                            url_before = ""
+
+                        try:
                             print(f"[{provider}] Probando selector: {selector}")
                             (
                                 download,
@@ -863,6 +1039,19 @@ def download_with_browser(
                                 )
                                 break
                         except PlaywrightTimeoutError:
+                            advanced_page = _page_after_timed_out_click(
+                                page,
+                                pages_before,
+                                url_before,
+                                provider,
+                            )
+                            if advanced_page is not None:
+                                page = advanced_page
+                                print(
+                                    f"[{provider}] La acción abrió otra "
+                                    "etapa; continuará Smart Browser"
+                                )
+                                break
                             print(
                                 f"[{provider}] El selector no inició una descarga "
                                 f"en {SELECTOR_DOWNLOAD_TIMEOUT_MS // 1000}s: {selector}"
@@ -917,17 +1106,18 @@ def download_with_browser(
                         and allow_http_handoff
                         and file_response_records
                     ):
-                        record = next(
-                            reversed(file_response_records.values())
+                        record = best_file_response(
+                            file_response_records.values()
                         )
-                        handoffs.append(
-                            _handoff_from_file_response(
-                                record,
-                                page,
-                                context,
-                                provider,
+                        if record is not None:
+                            handoffs.append(
+                                _handoff_from_file_response(
+                                    record,
+                                    page,
+                                    context,
+                                    provider,
+                                )
                             )
-                        )
 
                     if not handoffs and not saved_paths:
                         diagnostics = _browser_diagnostics(

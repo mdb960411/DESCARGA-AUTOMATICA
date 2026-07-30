@@ -13,7 +13,7 @@ from app.google_auth import get_credentials
 from app.status import execution_status
 from app.utils import safe_error_message, safe_filename, url_for_log
 
-VERSION_APP = "V4.3-PROVIDER-RECOVERY-2026-07-28"
+VERSION_APP = "V4.4-FALSE-POSITIVE-GUARD-2026-07-29"
 
 
 def message_folder(base, index, sender, subject):
@@ -99,6 +99,9 @@ def run():
                 links = gmail.extract_links(message)
                 link_failures = []
                 link_manual = []
+                alternative_failures = {}
+                alternative_manual = {}
+                completed_alternative_providers = set()
                 upload_failures = []
                 attempted_links = 0
                 print(f"[CORREO] Enlaces útiles detectados: {len(links)}")
@@ -112,10 +115,26 @@ def run():
                         )
                         continue
 
+                    provider = provider_for(url)
+                    is_alternative = (
+                        provider == "wetransfer"
+                        and sender.endswith("@wetransfer.com")
+                    )
+                    if (
+                        is_alternative
+                        and provider in completed_alternative_providers
+                    ):
+                        print(
+                            "[IGNORADO] Variante alternativa de "
+                            "WeTransfer; la transferencia ya se completó"
+                        )
+                        continue
+
                     attempted_links += 1
                     result = download_url(url, folder)
                     downloaded.extend(result.paths)
 
+                    failure = None
                     if result.errors:
                         normalized_errors = [
                             safe_error_message(error)
@@ -129,12 +148,11 @@ def run():
                             )
                         details = "; ".join(visible_errors)
                         failure = (
-                            f"{provider_for(url)}:{url_for_log(url)}"
+                            f"{provider}:{url_for_log(url)}"
                             f" ({details})"
                         )
-                        link_failures.append(failure)
-                        summary["links_failed"] += 1
 
+                    manual_request = None
                     if result.manual_actions:
                         normalized_actions = [
                             safe_error_message(action)
@@ -142,11 +160,54 @@ def run():
                         ]
                         details = "; ".join(normalized_actions[:5])
                         manual_request = (
-                            f"{provider_for(url)}:{url_for_log(url)}"
+                            f"{provider}:{url_for_log(url)}"
                             f" ({details})"
                         )
-                        link_manual.append(manual_request)
-                        summary["links_manual"] += 1
+
+                    clean_success = (
+                        bool(result.paths)
+                        and not result.errors
+                        and not result.manual_actions
+                    )
+                    if is_alternative and clean_success:
+                        completed_alternative_providers.add(provider)
+                        alternative_failures.pop(provider, None)
+                        alternative_manual.pop(provider, None)
+                    elif is_alternative:
+                        if failure:
+                            alternative_failures.setdefault(
+                                provider,
+                                [],
+                            ).append(failure)
+                        if manual_request:
+                            alternative_manual.setdefault(
+                                provider,
+                                [],
+                            ).append(manual_request)
+                    else:
+                        if failure:
+                            link_failures.append(failure)
+                            summary["links_failed"] += 1
+                        if manual_request:
+                            link_manual.append(manual_request)
+                            summary["links_manual"] += 1
+
+                for provider, failures_for_provider in (
+                    alternative_failures.items()
+                ):
+                    if provider not in completed_alternative_providers:
+                        link_failures.extend(failures_for_provider)
+                        summary["links_failed"] += len(
+                            failures_for_provider
+                        )
+                for provider, manual_for_provider in (
+                    alternative_manual.items()
+                ):
+                    if provider not in completed_alternative_providers:
+                        link_manual.extend(manual_for_provider)
+                        summary["links_manual"] += len(
+                            manual_for_provider
+                        )
 
                 summary["files_downloaded"] += len(downloaded)
 

@@ -1,5 +1,29 @@
 # Historial de cambios
 
+## V4.4 — Protección contra falsos archivos
+
+- Los recursos incrustados del HTML ya no se interpretan como enlaces
+  descargables.
+- Los correos ajenos a transferencias, como alertas de seguridad, se etiquetan
+  como ignorados si no contienen adjuntos o enlaces directos verificables.
+- El respaldo de captura de red exige evidencia fuerte: adjunto HTTP, MIME de
+  archivo o flujo binario con extensión válida.
+- Se bloquean respuestas de analítica, publicidad, cookies, logos, píxeles e
+  iconos.
+- La captura de red elige la evidencia más fuerte en vez de la última respuesta
+  observada.
+- WeTransfer acepta la pantalla intermedia de condiciones cuando aparece.
+- WeTransfer conserva la descarga nativa en el bucket para evitar que una URL
+  de un solo uso quede inválida al cancelar Chromium.
+- Las variantes alternativas de un mismo correo de WeTransfer se prueban como
+  respaldo; un enlace fallido no deja el mensaje parcial si otra variante
+  completa correctamente el archivo.
+- TransferNow puede continuar en una pestaña o etapa nueva después del primer
+  clic.
+- Smart Browser descarta contenedores no interactivos y resultados
+  publicitarios.
+- Nueva firma `V4.4-FALSE-POSITIVE-GUARD-2026-07-29`.
+
 ## V4.3 — Recuperación de proveedores y atención manual
 
 - Nueva etiqueta Gmail `Descarga-Automatica-Manual`.

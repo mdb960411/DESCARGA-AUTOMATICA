@@ -9,6 +9,11 @@ from app.browser_profile import (
 )
 from app.config import Config
 from app.download_result import DownloadResult
+from app.response_rules import (
+    best_file_response,
+    browser_file_response_score,
+)
+from app.link_policy import is_useful_email_link
 from app.link_utils import canonical_link_key
 from app.status import execution_status, manual_action_for_reason
 from app.utils import safe_filename, url_for_log
@@ -95,6 +100,79 @@ class CoreTests(unittest.TestCase):
             "https://wetransfer.com/downloads/transfer123/secret456/file-b?utm=1"
         )
         self.assertEqual(first, second)
+
+    def test_security_alert_and_html_assets_are_not_download_links(self):
+        for url in (
+            "https://myaccount.google.com/security-checkup",
+            "https://lh3.googleusercontent.com/mail-logo",
+            "https://cdn.example.com/landing-page",
+        ):
+            self.assertFalse(
+                is_useful_email_link(
+                    url,
+                    Config.allowed_extensions,
+                )
+            )
+
+    def test_explicit_direct_file_link_is_kept(self):
+        self.assertTrue(
+            is_useful_email_link(
+                "https://files.example.com/arte-final.zip",
+                Config.allowed_extensions,
+            )
+        )
+        self.assertTrue(
+            is_useful_email_link(
+                "https://files.example.com/get/123",
+                Config.allowed_extensions,
+                explicit_download=True,
+            )
+        )
+
+    def test_tracking_and_cookie_images_are_not_file_responses(self):
+        candidates = (
+            (
+                "https://tagging.wetransfer.com/download/pixel.png",
+                {"content-type": "image/png"},
+            ),
+            (
+                "https://cdn.cookielaw.org/logos/ot_guard_logo.svg",
+                {"content-type": "image/svg+xml"},
+            ),
+        )
+        for url, headers in candidates:
+            self.assertIsNone(
+                browser_file_response_score(
+                    url,
+                    headers,
+                    "xhr",
+                    Config.allowed_extensions,
+                )
+            )
+
+    def test_attachment_response_is_a_strong_file_candidate(self):
+        score = browser_file_response_score(
+            "https://download.example.com/object/123",
+            {
+                "content-type": "application/octet-stream",
+                "content-disposition": 'attachment; filename="arte.zip"',
+            },
+            "xhr",
+            Config.allowed_extensions,
+        )
+        self.assertEqual(score, 100)
+
+    def test_best_file_response_prefers_evidence_over_recency(self):
+        selected = best_file_response(
+            [
+                {"url": "https://example.com/real.zip", "score": 100},
+                {"url": "https://example.com/weak.bin", "score": 60},
+            ]
+        )
+        self.assertEqual(
+            selected["url"],
+            "https://example.com/real.zip",
+        )
 
     def test_ignored_email_label_is_configured(self):
         self.assertEqual(

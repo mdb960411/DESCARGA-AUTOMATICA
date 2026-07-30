@@ -1,4 +1,4 @@
-# Descarga Automática Gmail → Google Drive V4.3
+# Descarga Automática Gmail → Google Drive V4.4
 
 Job de Cloud Run para procesar correos de Gmail, descargar adjuntos y enlaces
 de transferencia, y guardar los archivos obtenidos en Google Drive.
@@ -7,7 +7,7 @@ Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V4.3
+## Cambios principales de V4.4
 
 - Usa un volumen de Cloud Storage para no guardar archivos grandes en la
   memoria de Cloud Run.
@@ -46,6 +46,19 @@ comprimidos.
   título y destino, y puede continuar la búsqueda después de un primer clic.
 - Si una descarga no genera el evento habitual de Chromium, puede recuperar
   una respuesta de archivo detectada en la red y continuar por HTTP en bloques.
+  La respuesta debe tener evidencia fuerte de ser el archivo real.
+- No extrae imágenes, logos ni píxeles incrustados directamente desde el HTML
+  del correo.
+- Bloquea respuestas web de analítica, cookies, publicidad e interfaces, aunque
+  su URL contenga la palabra `download`.
+- WeTransfer acepta su etapa de condiciones y conserva en Chromium las URLs de
+  descarga de un solo uso.
+- Si un correo de WeTransfer contiene variantes del mismo enlace, una variante
+  correcta descarta los fallos previos de sus alternativas.
+- TransferNow puede continuar la búsqueda cuando el primer control abre otra
+  pestaña o una segunda etapa.
+- Descarta candidatos publicitarios y elementos no interactivos del navegador
+  inteligente.
 - En caso de fallo registra descripciones seguras de los controles visibles,
   sin exponer los enlaces privados.
 - El resumen final distingue `OK`, `REQUIERE_ATENCION_MANUAL` y

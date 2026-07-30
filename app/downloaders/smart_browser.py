@@ -4,6 +4,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from time import monotonic
+from urllib.parse import urlparse
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
@@ -47,7 +48,18 @@ NEGATIVE_WORDS = (
     "cancelar",
     "reject",
     "rechazar",
+    "advertisement",
+    "anuncio",
+    "file download service",
+    "search results for",
 )
+
+BLOCKED_ACTION_DOMAINS = {
+    "adservice.google.com",
+    "doubleclick.net",
+    "google.com",
+    "googlesyndication.com",
+}
 
 ACTION_SELECTOR = (
     "button, a, [role='button'], [role='link'], "
@@ -203,6 +215,18 @@ def _candidate_score(metadata):
         )
     ).casefold()
 
+    href = str(metadata.get("href", ""))
+    try:
+        href_host = (urlparse(href).hostname or "").casefold()
+    except Exception:
+        href_host = ""
+    if any(
+        href_host == domain
+        or href_host.endswith(f".{domain}")
+        for domain in BLOCKED_ACTION_DOMAINS
+    ):
+        return -100
+
     score = 0
     if any(word in fields for word in DOWNLOAD_WORDS):
         score += 12
@@ -217,6 +241,19 @@ def _candidate_score(metadata):
     if any(word in fields for word in NEGATIVE_WORDS):
         score -= 14
     return score
+
+
+def _is_actionable(metadata):
+    tag = str(metadata.get("tag", "")).casefold()
+    role = str(metadata.get("role", "")).casefold()
+    element_type = str(metadata.get("type", "")).casefold()
+    testid = str(metadata.get("testid", "")).casefold()
+    return (
+        tag in {"a", "button"}
+        or (tag == "input" and element_type in {"button", "submit"})
+        or role in {"button", "link"}
+        or "download" in testid
+    )
 
 
 def _candidate_description(metadata):
@@ -274,6 +311,8 @@ def _metadata_candidates(page, search_all_frames):
                 continue
 
             metadata = _element_metadata(item)
+            if not _is_actionable(metadata):
+                continue
             score = _candidate_score(metadata)
             if score < 4:
                 continue
@@ -316,6 +355,9 @@ def _selector_candidates(page, selectors, search_all_frames):
                     continue
 
                 metadata = _element_metadata(item)
+                score = _candidate_score(metadata)
+                if score < 0:
+                    continue
                 identity = _candidate_identity(root_name, metadata)
                 if identity in seen:
                     continue
@@ -324,7 +366,7 @@ def _selector_candidates(page, selectors, search_all_frames):
                     ActionCandidate(
                         root_name=root_name,
                         locator=item,
-                        score=max(6, _candidate_score(metadata)),
+                        score=max(6, score),
                         description=_candidate_description(metadata),
                         identity=identity,
                     )
