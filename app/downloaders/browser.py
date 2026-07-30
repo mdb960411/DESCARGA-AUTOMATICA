@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlparse
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
+from app.action_policy import is_marketing_action
 from app.browser_profile import (
     USER_AGENT,
     browser_context_options,
@@ -126,6 +127,8 @@ def _locator_action_allowed(locator):
         )
     ).casefold()
     if href and _unsafe_action_url(href):
+        return False
+    if is_marketing_action(label, href):
         return False
     if (
         "file download service" in label
@@ -388,7 +391,11 @@ def _visible_indices(root, selector):
     indices = []
     for index in range(count):
         try:
-            if locator.nth(index).is_visible(timeout=750):
+            item = locator.nth(index)
+            if (
+                item.is_visible(timeout=750)
+                and _locator_action_allowed(item)
+            ):
                 indices.append(index)
         except Exception:
             continue
@@ -820,6 +827,11 @@ def download_with_browser(
     ordered_selectors = list(
         dict.fromkeys([*download_selectors, *GENERIC_DOWNLOAD_SELECTORS])
     )
+    readiness_selectors = (
+        list(dict.fromkeys(download_selectors))
+        if provider == "WETRANSFER"
+        else ordered_selectors
+    )
 
     try:
         browser_download_dir = Path(target_dir) / ".browser-downloads"
@@ -910,7 +922,7 @@ def download_with_browser(
                         _,
                     ) = _wait_for_download_controls(
                         page,
-                        ordered_selectors,
+                        readiness_selectors,
                         wait_for_download_controls_seconds,
                         search_all_frames=search_all_frames,
                         provider=provider,

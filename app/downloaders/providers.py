@@ -47,7 +47,7 @@ def download_wetransfer(url, target_dir):
             "button[data-testid*='download']",
             "a[data-testid*='download']",
         ],
-        wait_for_download_controls_seconds=15,
+        wait_for_download_controls_seconds=45,
         native_user_agent=True,
         allow_service_workers=True,
         search_all_frames=True,

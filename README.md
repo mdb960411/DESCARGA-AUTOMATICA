@@ -1,4 +1,4 @@
-# Descarga Automática Gmail → Google Drive V4.5
+# Descarga Automática Gmail → Google Drive V4.5.1
 
 Job de Cloud Run para procesar correos de Gmail, descargar adjuntos y enlaces
 de transferencia, y guardar los archivos obtenidos en Google Drive.
@@ -7,8 +7,11 @@ Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V4.5
+## Cambios principales de V4.5.1
 
+- Espera hasta 45 segundos el botón real de WeTransfer.
+- Descarta enlaces publicitarios como `Sé Ultimate`, planes y promociones,
+  aunque su URL contenga la palabra `download`.
 - Reintenta WeTransfer hasta tres veces con un navegador limpio cuando la
   interfaz falla de forma transitoria.
 - Reintenta el correo en ejecuciones posteriores antes de declararlo como
@@ -167,13 +170,13 @@ su etiqueta de estado y consérvalo como no leído.
 La firma esperada al iniciar esta versión es:
 
 ```text
-VERSION_APP: V4.5-RETRY-IDEMPOTENCY-2026-07-29
+VERSION_APP: V4.5.1-WETRANSFER-CONTROL-2026-07-30
 ```
 
 ## Despliegue
 
-Para actualizar desde V4.4 consulta
-[ACTUALIZACION_V4_5.md](ACTUALIZACION_V4_5.md). Para un despliegue nuevo
+Para actualizar desde V4.5 consulta
+[ACTUALIZACION_V4_5_1.md](ACTUALIZACION_V4_5_1.md). Para un despliegue nuevo
 consulta [DESPLIEGUE_PASO_A_PASO.md](DESPLIEGUE_PASO_A_PASO.md).
 
 ## Seguridad

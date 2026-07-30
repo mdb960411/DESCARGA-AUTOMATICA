@@ -1,5 +1,13 @@
 # Historial de cambios
 
+## V4.5.1 — Control real de WeTransfer
+
+- La espera inicial de WeTransfer ignora los enlaces publicitarios y aguarda
+  hasta 45 segundos el control verdadero de descarga.
+- `Sé Ultimate`, planes, precios y promociones quedan excluidos tanto de los
+  selectores directos como del navegador inteligente.
+- Nueva firma `V4.5.1-WETRANSFER-CONTROL-2026-07-30`.
+
 ## V4.5 — Reintentos, idempotencia y ejecución programada
 
 - WeTransfer realiza hasta tres intentos aislados con navegadores nuevos ante

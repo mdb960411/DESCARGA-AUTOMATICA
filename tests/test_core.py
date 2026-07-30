@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
+from app.action_policy import is_marketing_action
 from app.browser_profile import (
     USER_AGENT,
     browser_context_options,
@@ -193,6 +194,26 @@ class CoreTests(unittest.TestCase):
         self.assertFalse(
             errors_are_retryable(
                 ["La transferencia requiere una contraseña"]
+            )
+        )
+
+    def test_wetransfer_ultimate_ad_is_not_a_download_action(self):
+        self.assertTrue(
+            is_marketing_action(
+                "Sé Ultimate",
+                "https://wetransfer.com/explore/download",
+            )
+        )
+        self.assertTrue(
+            is_marketing_action(
+                "View plans",
+                "https://wetransfer.com/pricing",
+            )
+        )
+        self.assertFalse(
+            is_marketing_action(
+                "Descargar todo",
+                "https://wetransfer.com/downloads/a/b",
             )
         )
 

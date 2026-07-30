@@ -1,4 +1,4 @@
-# Despliegue paso a paso — V4.5
+# Despliegue paso a paso — V4.5.1
 
 Configuración preparada para:
 
@@ -121,7 +121,7 @@ inmediato**.
 3. Revisa que el log comience con:
 
    ```text
-   VERSION_APP: V4.5-RETRY-IDEMPOTENCY-2026-07-29
+   VERSION_APP: V4.5.1-WETRANSFER-CONTROL-2026-07-30
    ```
 
 4. Para SendGB, el log esperado incluye:
@@ -197,7 +197,7 @@ el proveedor exige una validación humana que no terminó dentro de Cloud Run.
 
 ## 11. Correos sin archivos
 
-La V4.5 crea automáticamente la etiqueta
+La V4.5.1 crea automáticamente la etiqueta
 `Descarga-Automatica-Ignorado`. Un correo sin adjuntos o enlaces útiles:
 
 - no se considera error;

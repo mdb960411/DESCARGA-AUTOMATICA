@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from app.action_policy import is_marketing_action
+
 
 DOWNLOAD_WORDS = (
     "download",
@@ -225,6 +227,8 @@ def _candidate_score(metadata):
         or href_host.endswith(f".{domain}")
         for domain in BLOCKED_ACTION_DOMAINS
     ):
+        return -100
+    if is_marketing_action(fields, href):
         return -100
 
     score = 0
