@@ -61,6 +61,9 @@ class CoreTests(unittest.TestCase):
             8192 * 1024 * 1024,
         )
 
+    def test_transfernow_retries_default_to_three(self):
+        self.assertEqual(Config.transfernow_download_attempts, 3)
+
     def test_email_asset_is_filtered_but_graphic_file_is_not(self):
         filters = load_filters()
         ignored, _ = filters.should_ignore_url(
@@ -159,6 +162,35 @@ class CoreTests(unittest.TestCase):
         )
 
         self.assertEqual(result.paths, [Path("trabajo.zip")])
+        self.assertEqual(result.errors, [])
+        self.assertEqual(handler.call_count, 2)
+        sleep_fn.assert_called_once_with(2)
+
+    def test_transfernow_retries_with_a_clean_handler_call(self):
+        handler = Mock(
+            side_effect=[
+                DownloadResult(
+                    errors=[
+                        "La página cargó controles, pero el proveedor "
+                        "cambió el botón de descarga"
+                    ]
+                ),
+                DownloadResult(paths=[Path("MJ327_114.pdf")]),
+            ]
+        )
+        sleep_fn = Mock()
+
+        result = download_with_retries(
+            handler,
+            "https://www.transfernow.net/dl/transfer/token",
+            Path("/tmp"),
+            provider="transfernow",
+            max_attempts=Config.transfernow_download_attempts,
+            retry_delay_seconds=2,
+            sleep_fn=sleep_fn,
+        )
+
+        self.assertEqual(result.paths, [Path("MJ327_114.pdf")])
         self.assertEqual(result.errors, [])
         self.assertEqual(handler.call_count, 2)
         sleep_fn.assert_called_once_with(2)

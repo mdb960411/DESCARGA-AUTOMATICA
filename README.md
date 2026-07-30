@@ -1,4 +1,4 @@
-# Descarga Automática Gmail → Google Drive V4.5.1
+# Descarga Automática Gmail → Google Drive V4.5.2
 
 Job de Cloud Run para procesar correos de Gmail, descargar adjuntos y enlaces
 de transferencia, y guardar los archivos obtenidos en Google Drive.
@@ -7,13 +7,15 @@ Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V4.5.1
+## Cambios principales de V4.5.2
 
 - Espera hasta 45 segundos el botón real de WeTransfer.
 - Descarta enlaces publicitarios como `Sé Ultimate`, planes y promociones,
   aunque su URL contenga la palabra `download`.
 - Reintenta WeTransfer hasta tres veces con un navegador limpio cuando la
   interfaz falla de forma transitoria.
+- Reintenta TransferNow hasta tres veces con un navegador limpio cuando el
+  primer control abre otra etapa pero el proveedor no inicia el archivo.
 - Reintenta el correo en ejecuciones posteriores antes de declararlo como
   error definitivo.
 - Reconoce duplicados por mensaje, transferencia y contenido.
@@ -128,6 +130,7 @@ BROWSER_ACTION_DIAGNOSTICS=true
 ENABLE_SENDGB=true
 MARK_AS_READ=true
 WETRANSFER_DOWNLOAD_ATTEMPTS=3
+TRANSFERNOW_DOWNLOAD_ATTEMPTS=3
 PROVIDER_RETRY_DELAY_SECONDS=2
 TRANSIENT_RETRY_RUNS=3
 EXECUTION_LOCK_TTL_SECONDS=3600
@@ -170,13 +173,13 @@ su etiqueta de estado y consérvalo como no leído.
 La firma esperada al iniciar esta versión es:
 
 ```text
-VERSION_APP: V4.5.1-WETRANSFER-CONTROL-2026-07-30
+VERSION_APP: V4.5.2-TRANSFERNOW-RETRY-2026-07-30
 ```
 
 ## Despliegue
 
-Para actualizar desde V4.5 consulta
-[ACTUALIZACION_V4_5_1.md](ACTUALIZACION_V4_5_1.md). Para un despliegue nuevo
+Para actualizar desde V4.5.1 consulta
+[ACTUALIZACION_V4_5_2.md](ACTUALIZACION_V4_5_2.md). Para un despliegue nuevo
 consulta [DESPLIEGUE_PASO_A_PASO.md](DESPLIEGUE_PASO_A_PASO.md).
 
 ## Seguridad

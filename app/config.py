@@ -86,6 +86,10 @@ class Config:
         "WETRANSFER_DOWNLOAD_ATTEMPTS",
         3,
     )
+    transfernow_download_attempts = env_int(
+        "TRANSFERNOW_DOWNLOAD_ATTEMPTS",
+        3,
+    )
     provider_retry_delay_seconds = env_int(
         "PROVIDER_RETRY_DELAY_SECONDS",
         2,
@@ -146,6 +150,10 @@ class Config:
             (
                 "WETRANSFER_DOWNLOAD_ATTEMPTS",
                 cls.wetransfer_download_attempts,
+            ),
+            (
+                "TRANSFERNOW_DOWNLOAD_ATTEMPTS",
+                cls.transfernow_download_attempts,
             ),
             ("TRANSIENT_RETRY_RUNS", cls.transient_retry_runs),
             (

@@ -1,5 +1,14 @@
 # Historial de cambios
 
+## V4.5.2 — Reintentos internos de TransferNow
+
+- TransferNow realiza hasta tres intentos aislados con navegadores nuevos
+  cuando abre una segunda etapa pero el archivo no comienza.
+- Los enlaces caducados, no disponibles o protegidos por contraseña siguen
+  sin repetirse innecesariamente.
+- Nueva variable `TRANSFERNOW_DOWNLOAD_ATTEMPTS`, con valor predeterminado `3`.
+- Nueva firma `V4.5.2-TRANSFERNOW-RETRY-2026-07-30`.
+
 ## V4.5.1 — Control real de WeTransfer
 
 - La espera inicial de WeTransfer ignora los enlaces publicitarios y aguarda

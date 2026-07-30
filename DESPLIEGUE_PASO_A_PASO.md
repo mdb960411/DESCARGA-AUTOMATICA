@@ -1,4 +1,4 @@
-# Despliegue paso a paso — V4.5.1
+# Despliegue paso a paso — V4.5.2
 
 Configuración preparada para:
 
@@ -71,6 +71,7 @@ EXCLUDE_MANUAL_MESSAGES=true
 BROWSER_ACTION_DIAGNOSTICS=true
 RETRY_LABEL=Descarga-Automatica-Reintento
 WETRANSFER_DOWNLOAD_ATTEMPTS=3
+TRANSFERNOW_DOWNLOAD_ATTEMPTS=3
 PROVIDER_RETRY_DELAY_SECONDS=2
 TRANSIENT_RETRY_RUNS=3
 EXECUTION_LOCK_TTL_SECONDS=3600
@@ -121,7 +122,7 @@ inmediato**.
 3. Revisa que el log comience con:
 
    ```text
-   VERSION_APP: V4.5.1-WETRANSFER-CONTROL-2026-07-30
+   VERSION_APP: V4.5.2-TRANSFERNOW-RETRY-2026-07-30
    ```
 
 4. Para SendGB, el log esperado incluye:
@@ -197,7 +198,7 @@ el proveedor exige una validación humana que no terminó dentro de Cloud Run.
 
 ## 11. Correos sin archivos
 
-La V4.5.1 crea automáticamente la etiqueta
+La V4.5.2 crea automáticamente la etiqueta
 `Descarga-Automatica-Ignorado`. Un correo sin adjuntos o enlaces útiles:
 
 - no se considera error;
