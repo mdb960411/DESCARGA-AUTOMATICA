@@ -104,11 +104,23 @@ class CoreTests(unittest.TestCase):
         )
 
     def test_container_starts_a_virtual_display(self):
+        project_root = Path(__file__).parents[1]
         dockerfile = (
-            Path(__file__).parents[1] / "Dockerfile"
+            project_root / "Dockerfile"
         ).read_text(encoding="utf-8")
-        self.assertIn("xvfb-run", dockerfile)
-        self.assertIn("1280x800x24", dockerfile)
+        startup = (project_root / "start.sh").read_text(encoding="utf-8")
+        self.assertIn('CMD ["/app/start.sh"]', dockerfile)
+        self.assertIn("Xvfb", startup)
+        self.assertIn("-displayfd 3", startup)
+        self.assertIn("1280x800x24", startup)
+
+    def test_virtual_display_startup_has_a_timeout_and_diagnostics(self):
+        startup = (
+            Path(__file__).parents[1] / "start.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn('STARTUP_CHECK" -ge 100', startup)
+        self.assertIn("Xvfb no respondió dentro de 10 segundos", startup)
+        self.assertIn("Iniciando aplicación Python", startup)
 
     def test_email_asset_is_filtered_but_graphic_file_is_not(self):
         filters = load_filters()

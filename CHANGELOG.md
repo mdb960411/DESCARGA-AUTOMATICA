@@ -1,5 +1,15 @@
 # Historial de cambios
 
+## V4.5.6 — Arranque verificable de Xvfb
+
+- Se reemplaza `xvfb-run` por un script de inicio explícito.
+- Xvfb informa el número de pantalla mediante `-displayfd`.
+- El arranque de la pantalla virtual tiene un límite de 10 segundos.
+- El registro distingue la preparación de Xvfb, el inicio de Python y la firma
+  de la aplicación.
+- Python y Xvfb se cierran al terminar o cancelar el contenedor.
+- Nueva firma `V4.5.6-XVFB-STARTUP-GUARD-2026-07-31`.
+
 ## V4.5.5 — Navegador visible sobre pantalla virtual
 
 - WeTransfer y SendAllFiles usan Chromium visible dentro de Xvfb en Cloud Run.

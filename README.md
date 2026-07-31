@@ -1,4 +1,4 @@
-# Descarga Automática Gmail → Google Drive V4.5.5
+# Descarga Automática Gmail → Google Drive V4.5.6
 
 Job de Cloud Run para procesar correos de Gmail, descargar adjuntos y enlaces
 de transferencia, y guardar los archivos obtenidos en Google Drive.
@@ -7,7 +7,14 @@ Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V4.5.5
+## Cambios principales de V4.5.6
+
+- El contenedor inicia Xvfb directamente y confirma en el registro cuándo la
+  pantalla virtual está lista.
+- El inicio de Xvfb tiene un límite de 10 segundos; si falla, el trabajo termina
+  con un diagnóstico en vez de quedar activo sin iniciar Python.
+- La aplicación registra una etapa anterior a `VERSION_APP`, lo que permite
+  distinguir un problema de pantalla virtual de un problema de importación.
 
 - WeTransfer y SendAllFiles ejecutan Chromium visible dentro de una pantalla
   virtual Xvfb en Cloud Run.
@@ -197,13 +204,13 @@ su etiqueta de estado y consérvalo como no leído.
 La firma esperada al iniciar esta versión es:
 
 ```text
-VERSION_APP: V4.5.5-VIRTUAL-DISPLAY-2026-07-31
+VERSION_APP: V4.5.6-XVFB-STARTUP-GUARD-2026-07-31
 ```
 
 ## Despliegue
 
-Para actualizar desde V4.5.4 consulta
-[ACTUALIZACION_V4_5_5.md](ACTUALIZACION_V4_5_5.md). Para un despliegue nuevo
+Para actualizar desde V4.5.5 consulta
+[ACTUALIZACION_V4_5_6.md](ACTUALIZACION_V4_5_6.md). Para un despliegue nuevo
 consulta [DESPLIEGUE_PASO_A_PASO.md](DESPLIEGUE_PASO_A_PASO.md).
 
 ## Seguridad

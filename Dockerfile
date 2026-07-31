@@ -15,5 +15,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY start.sh /app/start.sh
+RUN chmod 0755 /app/start.sh
 
-CMD ["xvfb-run", "-a", "-s", "-screen 0 1280x800x24", "python", "-m", "app.main"]
+CMD ["/app/start.sh"]
