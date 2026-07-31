@@ -55,10 +55,7 @@ class Config:
     partial_label = os.getenv("PARTIAL_LABEL", "Descarga-Automatica-Parcial")
     ignored_label = os.getenv("IGNORED_LABEL", "Descarga-Automatica-Ignorado")
     manual_label = os.getenv("MANUAL_LABEL", "Descarga-Automatica-Manual")
-    retry_label = os.getenv(
-        "RETRY_LABEL",
-        "Descarga-Automatica-Reintento",
-    )
+    retry_label = os.getenv("RETRY_LABEL", "Descarga-Automatica-Reintento")
     only_from = os.getenv("ONLY_FROM", "").strip().lower()
     only_from_domain = os.getenv("ONLY_FROM_DOMAIN", "").strip().lower()
     keyword = os.getenv("KEYWORD", "").strip().lower()
@@ -67,6 +64,33 @@ class Config:
     download_dir = Path(os.getenv("DOWNLOAD_DIR", "/tmp/descargas"))
     google_oauth_token_json = os.getenv("GOOGLE_OAUTH_TOKEN_JSON", "").strip()
     google_client_secret_json = os.getenv("GOOGLE_CLIENT_SECRET_JSON", "").strip()
+    _google_oauth_token_file_raw = os.getenv(
+        "GOOGLE_OAUTH_TOKEN_FILE", ""
+    ).strip()
+    google_oauth_token_file = (
+        Path(_google_oauth_token_file_raw)
+        if _google_oauth_token_file_raw
+        else None
+    )
+    _google_client_secret_file_raw = os.getenv(
+        "GOOGLE_CLIENT_SECRET_FILE", ""
+    ).strip()
+    google_client_secret_file = (
+        Path(_google_client_secret_file_raw)
+        if _google_client_secret_file_raw
+        else None
+    )
+    _browser_profile_dir_raw = os.getenv("BROWSER_PROFILE_DIR", "").strip()
+    browser_profile_dir = (
+        Path(_browser_profile_dir_raw)
+        if _browser_profile_dir_raw
+        else None
+    )
+    state_dir = Path(
+        os.getenv("STATE_DIR", "/tmp/gmail-downloader-state")
+    )
+    browser_headless = env_bool("BROWSER_HEADLESS", True)
+    browser_diagnostics = env_bool("BROWSER_DIAGNOSTICS", True)
     enable_sendgb = env_bool("ENABLE_SENDGB", True)
     mark_as_read = env_bool("MARK_AS_READ", True)
     exclude_error_messages = env_bool("EXCLUDE_ERROR_MESSAGES", True)
@@ -82,27 +106,13 @@ class Config:
     upload_chunk_size_mb = env_int("UPLOAD_CHUNK_SIZE_MB", 8)
     upload_retries = env_int("UPLOAD_RETRIES", 3)
     download_timeout_seconds = env_int("DOWNLOAD_TIMEOUT_SECONDS", 1800)
-    wetransfer_download_attempts = env_int(
-        "WETRANSFER_DOWNLOAD_ATTEMPTS",
-        3,
+    browser_provider_attempts = env_int("BROWSER_PROVIDER_ATTEMPTS", 2)
+    browser_retry_delay_seconds = env_int(
+        "BROWSER_RETRY_DELAY_SECONDS", 3
     )
-    transfernow_download_attempts = env_int(
-        "TRANSFERNOW_DOWNLOAD_ATTEMPTS",
-        3,
-    )
-    sendallfiles_download_attempts = env_int(
-        "SENDALLFILES_DOWNLOAD_ATTEMPTS",
-        3,
-    )
-    provider_retry_delay_seconds = env_int(
-        "PROVIDER_RETRY_DELAY_SECONDS",
-        2,
-    )
-    transient_retry_runs = env_int("TRANSIENT_RETRY_RUNS", 3)
-    execution_lock_ttl_seconds = env_int(
-        "EXECUTION_LOCK_TTL_SECONDS",
-        3600,
-    )
+    max_message_attempts = env_int("MAX_MESSAGE_ATTEMPTS", 5)
+    stale_run_hours = env_int("STALE_RUN_HOURS", 24)
+    max_diagnostic_files = env_int("MAX_DIAGNOSTIC_FILES", 20)
 
     _allowed_extensions_raw = os.getenv("ALLOWED_EXTENSIONS", "").strip()
     allowed_extensions = (
@@ -133,25 +143,30 @@ class Config:
         return cls.upload_chunk_size_mb * 1024 * 1024
 
     @classmethod
-    def download_attempts_for(cls, provider):
-        return {
-            "wetransfer": cls.wetransfer_download_attempts,
-            "transfernow": cls.transfernow_download_attempts,
-            "sendallfiles": cls.sendallfiles_download_attempts,
-        }.get(provider, 1)
-
-    @classmethod
     def validate(cls):
         missing = []
-        for name, value in [
-            ("GOOGLE_OAUTH_TOKEN_JSON", cls.google_oauth_token_json),
-            ("GOOGLE_CLIENT_SECRET_JSON", cls.google_client_secret_json),
-            ("DRIVE_FOLDER_ID", cls.drive_folder_id),
-        ]:
-            if not value:
-                missing.append(name)
+        if not cls.google_oauth_token_json and not cls.google_oauth_token_file:
+            missing.append(
+                "GOOGLE_OAUTH_TOKEN_JSON o GOOGLE_OAUTH_TOKEN_FILE"
+            )
+        if (
+            not cls.google_client_secret_json
+            and not cls.google_client_secret_file
+        ):
+            missing.append(
+                "GOOGLE_CLIENT_SECRET_JSON o GOOGLE_CLIENT_SECRET_FILE"
+            )
+        if not cls.drive_folder_id:
+            missing.append("DRIVE_FOLDER_ID")
         if missing:
             raise RuntimeError("Faltan variables obligatorias: " + ", ".join(missing))
+
+        for name, path in (
+            ("GOOGLE_OAUTH_TOKEN_FILE", cls.google_oauth_token_file),
+            ("GOOGLE_CLIENT_SECRET_FILE", cls.google_client_secret_file),
+        ):
+            if path is not None and not path.is_file():
+                raise RuntimeError(f"{name} no existe o no es un archivo")
 
         positive_values = [
             ("MAX_EMAILS", cls.max_emails),
@@ -159,23 +174,9 @@ class Config:
             ("DOWNLOAD_CHUNK_SIZE_MB", cls.download_chunk_size_mb),
             ("UPLOAD_CHUNK_SIZE_MB", cls.upload_chunk_size_mb),
             ("DOWNLOAD_TIMEOUT_SECONDS", cls.download_timeout_seconds),
-            (
-                "WETRANSFER_DOWNLOAD_ATTEMPTS",
-                cls.wetransfer_download_attempts,
-            ),
-            (
-                "TRANSFERNOW_DOWNLOAD_ATTEMPTS",
-                cls.transfernow_download_attempts,
-            ),
-            (
-                "SENDALLFILES_DOWNLOAD_ATTEMPTS",
-                cls.sendallfiles_download_attempts,
-            ),
-            ("TRANSIENT_RETRY_RUNS", cls.transient_retry_runs),
-            (
-                "EXECUTION_LOCK_TTL_SECONDS",
-                cls.execution_lock_ttl_seconds,
-            ),
+            ("BROWSER_PROVIDER_ATTEMPTS", cls.browser_provider_attempts),
+            ("MAX_MESSAGE_ATTEMPTS", cls.max_message_attempts),
+            ("MAX_DIAGNOSTIC_FILES", cls.max_diagnostic_files),
         ]
         invalid = [name for name, value in positive_values if value <= 0]
         if invalid:
@@ -183,14 +184,22 @@ class Config:
                 "Estas variables deben ser mayores que cero: " + ", ".join(invalid)
             )
 
-        if cls.provider_retry_delay_seconds < 0:
-            raise RuntimeError(
-                "PROVIDER_RETRY_DELAY_SECONDS no puede ser negativo"
-            )
-
         # Google Drive exige que los fragmentos de una subida reanudable sean
         # múltiplos de 256 KiB.
         if cls.upload_chunk_size_bytes() % (256 * 1024):
             raise RuntimeError(
                 "UPLOAD_CHUNK_SIZE_MB debe producir fragmentos múltiplos de 256 KiB"
+            )
+
+        non_negative_values = [
+            ("BROWSER_RETRY_DELAY_SECONDS", cls.browser_retry_delay_seconds),
+            ("STALE_RUN_HOURS", cls.stale_run_hours),
+        ]
+        invalid = [
+            name for name, value in non_negative_values if value < 0
+        ]
+        if invalid:
+            raise RuntimeError(
+                "Estas variables no pueden ser negativas: "
+                + ", ".join(invalid)
             )

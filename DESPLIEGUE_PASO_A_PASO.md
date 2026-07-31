@@ -1,4 +1,4 @@
-# Despliegue paso a paso — V4.5.6
+# Despliegue paso a paso — V4.4
 
 Configuración preparada para:
 
@@ -69,13 +69,6 @@ EXCLUDE_IGNORED_MESSAGES=true
 MANUAL_LABEL=Descarga-Automatica-Manual
 EXCLUDE_MANUAL_MESSAGES=true
 BROWSER_ACTION_DIAGNOSTICS=true
-RETRY_LABEL=Descarga-Automatica-Reintento
-WETRANSFER_DOWNLOAD_ATTEMPTS=3
-TRANSFERNOW_DOWNLOAD_ATTEMPTS=3
-SENDALLFILES_DOWNLOAD_ATTEMPTS=3
-PROVIDER_RETRY_DELAY_SECONDS=2
-TRANSIENT_RETRY_RUNS=3
-EXECUTION_LOCK_TTL_SECONDS=3600
 ```
 
 Configura `ALLOWED_EXTENSIONS` con:
@@ -123,10 +116,7 @@ inmediato**.
 3. Revisa que el log comience con:
 
    ```text
-   [INICIO] Iniciando pantalla virtual Xvfb
-   [INICIO] Pantalla virtual lista en DISPLAY=:...
-   [INICIO] Iniciando aplicación Python
-   VERSION_APP: V4.5.6-XVFB-STARTUP-GUARD-2026-07-31
+   VERSION_APP: V4.4-FALSE-POSITIVE-GUARD-2026-07-29
    ```
 
 4. Para SendGB, el log esperado incluye:
@@ -153,7 +143,6 @@ inmediato**.
 5. El log debe comenzar con:
 
    ```text
-   [SENDALLFILES] Navegador visible virtual activo
    [SENDALLFILES] Modo compatible activo
    ```
 
@@ -162,15 +151,15 @@ inmediato**.
 7. Si Cloudflare queda pendiente, el resultado esperado es:
 
    ```text
-   [SENDALLFILES] Fallo transitorio; se abrirá un navegador nuevo
-   [SENDALLFILES] Intento 2 de 3
+   [SENDALLFILES] ACCION_MANUAL: ...
+   [CORREO] Estado=MANUAL. ...
    ```
 
-8. Si ninguna sesión completa la validación, Gmail creará una etiqueta
-   `Descarga-Automatica-Reintento-*` y lo intentará en una próxima ejecución.
+8. Gmail creará `Descarga-Automatica-Manual`. El correo permanecerá no leído y
+   no volverá a procesarse automáticamente.
 
-Esto no significa que el enlace esté caducado ni que exija una acción humana.
-Significa que la validación automática no terminó en esa sesión de Cloud Run.
+Esto no significa que `LINK 4.zip` o `LINK 2.zip` estén caducados. Significa que
+el proveedor exige una validación humana que no terminó dentro de Cloud Run.
 
 ## 9. Prueba de WeTransfer, TransferNow y SwissTransfer
 
@@ -183,7 +172,6 @@ Significa que la validación automática no terminó en esa sesión de Cloud Run
 
    ```text
    Perfil web moderno activo
-   Intento 1 de 3
    Interfaz de descarga lista
    Candidato inteligente etapa ...
    ```
@@ -203,7 +191,7 @@ Significa que la validación automática no terminó en esa sesión de Cloud Run
 
 ## 11. Correos sin archivos
 
-La V4.5.6 crea automáticamente la etiqueta
+La V4.4 crea automáticamente la etiqueta
 `Descarga-Automatica-Ignorado`. Un correo sin adjuntos o enlaces útiles:
 
 - no se considera error;
@@ -217,8 +205,6 @@ Para volver a evaluarlo, elimina esa etiqueta.
 - `OK`: no hubo errores ni intervenciones manuales.
 - `REQUIERE_ATENCION_MANUAL`: al menos un correo necesita ser descargado por
   una persona, pero no hubo fallos técnicos.
-- `REINTENTOS_PENDIENTES`: hubo un fallo técnico transitorio y el correo se
-  procesará nuevamente en la siguiente activación programada.
 - `COMPLETADO_CON_ERRORES`: uno o más proveedores o subidas fallaron.
 
 El contenedor puede terminar con `exit(0)` porque los errores se administran

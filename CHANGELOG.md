@@ -1,82 +1,21 @@
 # Historial de cambios
 
-## V4.5.6 — Arranque verificable de Xvfb
+## V5.0 — Trabajador persistente en Compute Engine
 
-- Se reemplaza `xvfb-run` por un script de inicio explícito.
-- Xvfb informa el número de pantalla mediante `-displayfd`.
-- El arranque de la pantalla virtual tiene un límite de 10 segundos.
-- El registro distingue la preparación de Xvfb, el inicio de Python y la firma
-  de la aplicación.
-- Python y Xvfb se cierran al terminar o cancelar el contenedor.
-- Nueva firma `V4.5.6-XVFB-STARTUP-GUARD-2026-07-31`.
-
-## V4.5.5 — Navegador visible sobre pantalla virtual
-
-- WeTransfer y SendAllFiles usan Chromium visible dentro de Xvfb en Cloud Run.
-- El Dockerfile instala y activa `xvfb` y `xauth` antes de iniciar la app.
-- Las sesiones sin panel descargable se reemplazan después de 30 segundos.
-- WeTransfer conserva cinco etapas inteligentes, pero limita cada sesión a
-  100 segundos.
-- Nueva firma `V4.5.5-VIRTUAL-DISPLAY-2026-07-31`.
-
-## V4.5.4 — Reintento automático de SendAllFiles
-
-- Una validación temporalmente pendiente de Cloudflare deja de clasificarse
-  inmediatamente como descarga manual.
-- SendAllFiles realiza hasta tres intentos aislados con navegadores nuevos.
-- Si Turnstile todavía no termina, el mensaje conserva un estado de reintento
-  automático para futuras ejecuciones.
-- Nueva variable `SENDALLFILES_DOWNLOAD_ATTEMPTS`, con valor predeterminado
-  `3`.
-- Nueva firma `V4.5.4-SENDALLFILES-AUTO-RETRY-2026-07-30`.
-
-## V4.5.3 — Panel y descarga multipaso de WeTransfer
-
-- WeTransfer usa el perfil compatible completo para que su aplicación dinámica
-  pueda cargar el panel lateral de la transferencia.
-- La espera del panel aumenta de 45 a 75 segundos.
-- El navegador inteligente admite hasta cinco etapas y reconoce el control
-  `Ir a la transferencia`.
-- Después de cada avance espera la carga del siguiente control en vez de
-  finalizar inmediatamente.
-- Una descarga iniciada de forma asíncrona se conserva aunque el evento ocurra
-  después de la ventana inmediata del clic.
-- Se mantienen las exclusiones de publicidad como `Sé Ultimate`.
-- Nueva firma `V4.5.3-WETRANSFER-MULTISTEP-2026-07-30`.
-
-## V4.5.2 — Reintentos internos de TransferNow
-
-- TransferNow realiza hasta tres intentos aislados con navegadores nuevos
-  cuando abre una segunda etapa pero el archivo no comienza.
-- Los enlaces caducados, no disponibles o protegidos por contraseña siguen
-  sin repetirse innecesariamente.
-- Nueva variable `TRANSFERNOW_DOWNLOAD_ATTEMPTS`, con valor predeterminado `3`.
-- Nueva firma `V4.5.2-TRANSFERNOW-RETRY-2026-07-30`.
-
-## V4.5.1 — Control real de WeTransfer
-
-- La espera inicial de WeTransfer ignora los enlaces publicitarios y aguarda
-  hasta 45 segundos el control verdadero de descarga.
-- `Sé Ultimate`, planes, precios y promociones quedan excluidos tanto de los
-  selectores directos como del navegador inteligente.
-- Nueva firma `V4.5.1-WETRANSFER-CONTROL-2026-07-30`.
-
-## V4.5 — Reintentos, idempotencia y ejecución programada
-
-- WeTransfer realiza hasta tres intentos aislados con navegadores nuevos ante
-  fallos transitorios de su interfaz.
-- Los errores técnicos se reintentan en ejecuciones posteriores antes de
-  etiquetar definitivamente el mensaje como error.
-- Nuevas etiquetas automáticas
-  `Descarga-Automatica-Reintento-1` y
-  `Descarga-Automatica-Reintento-2`.
-- Drive reconoce la misma transferencia aunque llegue con otro ID de correo.
-- Compatibilidad con archivos de V4.4 mediante comparación segura de nombre,
-  tamaño y MD5.
-- Verificación posterior de las etiquetas aplicadas por Gmail.
-- Confirmaciones de envío de TransferNow ignoradas automáticamente.
-- Bloqueo persistente para evitar ejecuciones superpuestas de Cloud Scheduler.
-- Nueva firma `V4.5-RETRY-IDEMPOTENCY-2026-07-29`.
+- Nuevo perfil de Chromium persistente para conservar cookies, almacenamiento
+  local y Service Workers entre ejecuciones.
+- Navegador visible dentro de Xvfb para proveedores que entregan una interfaz
+  distinta a navegadores automatizados sin pantalla.
+- IP estable y almacenamiento local persistente en Compute Engine.
+- Bloqueo con `flock` para impedir ejecuciones simultáneas.
+- Reintentos por proveedor dentro de una ejecución y hasta cinco ejecuciones
+  por mensaje, con estado persistente.
+- Nueva etiqueta `Descarga-Automatica-Reintento`.
+- Separación entre fallos transitorios y enlaces caducados.
+- Secretos OAuth montados desde Secret Manager como archivos de solo lectura.
+- Capturas privadas y rotativas de diagnóstico del navegador.
+- Imagen etiquetada como `vm-v5`, `latest` y SHA del commit.
+- Instalador, servicio y temporizador systemd incluidos en `vm/`.
 
 ## V4.4 — Protección contra falsos archivos
 

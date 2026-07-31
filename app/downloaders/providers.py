@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-from app.browser_profile import (
-    SENDALLFILES_BROWSER_OPTIONS,
-    WETRANSFER_BROWSER_OPTIONS,
-)
 from app.config import Config
 from app.downloaders.browser import download_with_browser
 
@@ -51,7 +47,11 @@ def download_wetransfer(url, target_dir):
             "button[data-testid*='download']",
             "a[data-testid*='download']",
         ],
-        **WETRANSFER_BROWSER_OPTIONS,
+        wait_for_download_controls_seconds=15,
+        compatibility_mode=True,
+        native_user_agent=True,
+        allow_service_workers=True,
+        search_all_frames=True,
         # WeTransfer puede invalidar su URL de un solo uso cuando Chromium
         # cancela la descarga para cederla a requests. Se conserva la descarga
         # nativa directamente sobre el bucket montado.
@@ -112,7 +112,15 @@ def download_sendallfiles(url, target_dir):
             "a[download]",
         ],
         download_all=True,
-        **SENDALLFILES_BROWSER_OPTIONS,
+        wait_for_download_controls_seconds=60,
+        compatibility_mode=True,
+        search_all_frames=True,
+        # Conserva la sesión validada por Cloudflare mientras Chromium escribe
+        # directamente en el volumen externo montado.
+        allow_http_handoff=False,
+        # En la VM el perfil es persistente. Una validación aún pendiente debe
+        # reintentarse y no clasificarse prematuramente como descarga manual.
+        manual_on_pending_challenge=False,
     )
 
 

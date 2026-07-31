@@ -10,10 +10,6 @@ from googleapiclient.discovery import build
 from app.config import Config
 from app.link_policy import is_useful_email_link
 from app.link_utils import canonical_link_key
-from app.message_rules import (
-    is_sender_confirmation as sender_confirmation_matches,
-    retry_label_names as build_retry_label_names,
-)
 from app.utils import decode_base64url, extension_allowed, safe_filename, unique_path
 
 
@@ -118,13 +114,6 @@ class GmailClient:
             if Config.keyword not in combined:
                 return False
         return True
-
-    @classmethod
-    def is_sender_confirmation(cls, message):
-        return sender_confirmation_matches(
-            cls.sender_email(message),
-            cls.subject(message),
-        )
 
     @staticmethod
     def _clean_url(raw_url):
@@ -307,31 +296,9 @@ class GmailClient:
             Config.partial_label,
             Config.ignored_label,
             Config.manual_label,
-            *self.retry_label_names(),
+            Config.retry_label,
         ):
             self.label_id(name, create=True)
-
-    @staticmethod
-    def retry_label_name(attempt):
-        return f"{Config.retry_label}-{attempt}"
-
-    @classmethod
-    def retry_label_names(cls):
-        return build_retry_label_names(
-            Config.retry_label,
-            Config.transient_retry_runs,
-        )
-
-    def retry_attempt(self, message):
-        message_labels = set(message.get("labelIds", []))
-        for attempt, name in enumerate(
-            self.retry_label_names(),
-            1,
-        ):
-            label_id = self.label_id(name, create=False)
-            if label_id and label_id in message_labels:
-                return attempt
-        return 0
 
     def _modify_status(
         self,
@@ -361,31 +328,9 @@ class GmailClient:
         if remove_ids:
             body["removeLabelIds"] = list(dict.fromkeys(remove_ids))
 
-        updated = self.service.users().messages().modify(
+        self.service.users().messages().modify(
             userId="me", id=message_id, body=body
         ).execute()
-
-        actual_ids = set(updated.get("labelIds", []))
-        if not actual_ids:
-            verified = self.service.users().messages().get(
-                userId="me",
-                id=message_id,
-                format="minimal",
-                fields="id,labelIds",
-            ).execute()
-            actual_ids = set(verified.get("labelIds", []))
-
-        missing = set(add_ids) - actual_ids
-        retained = set(remove_ids) & actual_ids
-        if missing or retained:
-            raise RuntimeError(
-                "Gmail no confirmó la aplicación de las etiquetas de estado"
-            )
-
-        print(
-            "[GMAIL] Etiquetas verificadas: "
-            + ", ".join(add_labels)
-        )
 
     def mark_processed(self, message_id):
         self._modify_status(
@@ -396,7 +341,7 @@ class GmailClient:
                 Config.partial_label,
                 Config.ignored_label,
                 Config.manual_label,
-                *self.retry_label_names(),
+                Config.retry_label,
             ],
             mark_as_read=Config.mark_as_read,
         )
@@ -410,7 +355,7 @@ class GmailClient:
             Config.processed_label,
             Config.ignored_label,
             Config.manual_label,
-            *self.retry_label_names(),
+            Config.retry_label,
         ]
         if not partial:
             remove_labels.append(Config.partial_label)
@@ -431,7 +376,7 @@ class GmailClient:
                 Config.error_label,
                 Config.partial_label,
                 Config.manual_label,
-                *self.retry_label_names(),
+                Config.retry_label,
             ],
             # Un correo personal sin archivos no debe marcarse como leído por
             # una automatización destinada únicamente a transferencias.
@@ -447,7 +392,7 @@ class GmailClient:
             Config.processed_label,
             Config.error_label,
             Config.ignored_label,
-            *self.retry_label_names(),
+            Config.retry_label,
         ]
         if not partial:
             remove_labels.append(Config.partial_label)
@@ -461,9 +406,8 @@ class GmailClient:
             mark_as_read=False,
         )
 
-    def mark_retry(self, message_id, attempt, partial=False):
-        retry_label = self.retry_label_name(attempt)
-        add_labels = [retry_label]
+    def mark_retry(self, message_id, partial=False):
+        add_labels = [Config.retry_label]
         if partial:
             add_labels.append(Config.partial_label)
 
@@ -472,11 +416,6 @@ class GmailClient:
             Config.error_label,
             Config.ignored_label,
             Config.manual_label,
-            *(
-                name
-                for name in self.retry_label_names()
-                if name != retry_label
-            ),
         ]
         if not partial:
             remove_labels.append(Config.partial_label)
@@ -485,7 +424,5 @@ class GmailClient:
             message_id,
             add_labels=add_labels,
             remove_labels=remove_labels,
-            # El correo debe continuar sin leer para entrar en la siguiente
-            # ejecución de Gmail.
             mark_as_read=False,
         )

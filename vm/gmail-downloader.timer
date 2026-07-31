@@ -1,0 +1,12 @@
+[Unit]
+Description=Ejecuta Gmail Downloader cada 15 minutos
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+AccuracySec=30s
+Persistent=true
+Unit=gmail-downloader.service
+
+[Install]
+WantedBy=timers.target

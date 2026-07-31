@@ -1,4 +1,3 @@
-import hashlib
 from urllib.parse import urlsplit
 
 
@@ -33,16 +32,3 @@ def canonical_link_key(url):
         )
 
     return ("url", url)
-
-
-def source_link_fingerprint(url):
-    """
-    Identificador estable y no reversible para una transferencia.
-
-    Permite reconocer el mismo enlace aunque Gmail lo entregue en mensajes
-    diferentes, sin guardar ni registrar el token privado de la URL.
-    """
-
-    canonical = canonical_link_key(url)
-    value = "\x1f".join(str(item) for item in canonical)
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()

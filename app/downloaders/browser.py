@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic
 from urllib.parse import unquote, urlparse
@@ -10,7 +11,6 @@ from urllib.parse import unquote, urlparse
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
-from app.action_policy import is_marketing_action
 from app.browser_profile import (
     USER_AGENT,
     browser_context_options,
@@ -127,8 +127,6 @@ def _locator_action_allowed(locator):
         )
     ).casefold()
     if href and _unsafe_action_url(href):
-        return False
-    if is_marketing_action(label, href):
         return False
     if (
         "file download service" in label
@@ -391,11 +389,7 @@ def _visible_indices(root, selector):
     indices = []
     for index in range(count):
         try:
-            item = locator.nth(index)
-            if (
-                item.is_visible(timeout=750)
-                and _locator_action_allowed(item)
-            ):
+            if locator.nth(index).is_visible(timeout=750):
                 indices.append(index)
         except Exception:
             continue
@@ -796,6 +790,51 @@ def _close_browser_objects(page, context, browser, event_listeners):
             pass
 
 
+def _prepare_persistent_profile(profile_dir):
+    profile_dir = Path(profile_dir)
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    # Chromium deja estos enlaces cuando el proceso muere abruptamente. El
+    # bloqueo global de la aplicación garantiza que no existe otro navegador
+    # válido usando este perfil al limpiarlos.
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        try:
+            (profile_dir / name).unlink(missing_ok=True)
+        except OSError:
+            pass
+    return profile_dir
+
+
+def _save_failure_screenshot(page, provider):
+    if not Config.browser_diagnostics or page is None:
+        return
+
+    try:
+        directory = Config.state_dir / "diagnostics"
+        directory.mkdir(parents=True, exist_ok=True)
+        existing = sorted(
+            directory.glob("browser-*.png"),
+            key=lambda item: item.stat().st_mtime,
+        )
+        while len(existing) >= Config.max_diagnostic_files:
+            existing.pop(0).unlink(missing_ok=True)
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        destination = directory / (
+            f"browser-{provider.lower()}-{timestamp}.png"
+        )
+        page.screenshot(path=str(destination), full_page=True)
+        print(
+            f"[{provider}] Diagnóstico visual privado guardado: "
+            f"{destination.name}"
+        )
+    except Exception as exc:
+        print(
+            f"[{provider}] No se pudo guardar el diagnóstico visual: "
+            f"{safe_error_message(exc)}"
+        )
+
+
 def download_with_browser(
     url,
     target_dir,
@@ -804,18 +843,12 @@ def download_with_browser(
     *,
     download_all=False,
     wait_for_download_controls_seconds=0,
-    headed_mode=False,
     compatibility_mode=False,
     native_user_agent=False,
     allow_service_workers=False,
     search_all_frames=False,
     allow_http_handoff=True,
     manual_on_pending_challenge=False,
-    browser_total_timeout_seconds=BROWSER_TOTAL_TIMEOUT_SECONDS,
-    smart_browser_max_seconds=30,
-    smart_browser_max_stages=3,
-    smart_browser_stage_settle_ms=600,
-    async_download_grace_seconds=0,
 ):
     browser = None
     context = None
@@ -829,17 +862,9 @@ def download_with_browser(
     unavailable_reason = None
     request_records = {}
     file_response_records = {}
-    observed_downloads = []
-    handled_download_ids = set()
-    attached_page_ids = set()
 
     ordered_selectors = list(
         dict.fromkeys([*download_selectors, *GENERIC_DOWNLOAD_SELECTORS])
-    )
-    readiness_selectors = (
-        list(dict.fromkeys(download_selectors))
-        if provider == "WETRANSFER"
-        else ordered_selectors
     )
 
     try:
@@ -848,46 +873,42 @@ def download_with_browser(
 
         with sync_playwright() as playwright:
             try:
-                browser = playwright.chromium.launch(
-                    headless=not headed_mode,
-                    downloads_path=str(browser_download_dir),
-                    args=browser_launch_arguments(compatibility_mode),
+                context_options = browser_context_options(
+                    compatibility_mode,
+                    native_user_agent=native_user_agent,
+                    allow_service_workers=allow_service_workers,
                 )
-                context = browser.new_context(
-                    **browser_context_options(
-                        compatibility_mode,
-                        native_user_agent=native_user_agent,
-                        allow_service_workers=allow_service_workers,
-                    )
-                )
+                launch_options = {
+                    "headless": Config.browser_headless,
+                    "downloads_path": str(browser_download_dir),
+                    "args": browser_launch_arguments(compatibility_mode),
+                }
 
-                def attach_download_listener(candidate_page):
-                    page_id = id(candidate_page)
-                    if page_id in attached_page_ids:
-                        return
-                    attached_page_ids.add(page_id)
-                    listener = lambda download, source_page=candidate_page: (
-                        observed_downloads.append(
-                            (source_page, download)
-                        )
+                if Config.browser_profile_dir is not None:
+                    profile_dir = _prepare_persistent_profile(
+                        Config.browser_profile_dir
                     )
-                    candidate_page.on("download", listener)
-                    event_listeners.append(
-                        (candidate_page, "download", listener)
+                    context = playwright.chromium.launch_persistent_context(
+                        str(profile_dir),
+                        **launch_options,
+                        **context_options,
                     )
+                    print(
+                        f"[{provider}] Perfil persistente de Chromium activo"
+                    )
+                    page = (
+                        context.pages[0]
+                        if context.pages
+                        else context.new_page()
+                    )
+                else:
+                    browser = playwright.chromium.launch(**launch_options)
+                    context = browser.new_context(**context_options)
+                    page = context.new_page()
 
                 # No se interceptan recursos con context.route(). Los callbacks
                 # pendientes de esa ruta eran la causa de CancelledError y
                 # TargetClosedError al apagar Chromium.
-                page = context.new_page()
-                attach_download_listener(page)
-                page_listener = lambda new_page: attach_download_listener(
-                    new_page
-                )
-                context.on("page", page_listener)
-                event_listeners.append(
-                    (context, "page", page_listener)
-                )
                 request_listener = lambda request: _remember_request(
                     request, request_records
                 )
@@ -907,11 +928,6 @@ def download_with_browser(
                 )
                 page.set_default_timeout(10_000)
                 page.set_default_navigation_timeout(90_000)
-
-                if headed_mode:
-                    print(
-                        f"[{provider}] Navegador visible virtual activo"
-                    )
 
                 if compatibility_mode:
                     print(
@@ -959,7 +975,7 @@ def download_with_browser(
                         _,
                     ) = _wait_for_download_controls(
                         page,
-                        readiness_selectors,
+                        ordered_selectors,
                         wait_for_download_controls_seconds,
                         search_all_frames=search_all_frames,
                         provider=provider,
@@ -1022,7 +1038,6 @@ def download_with_browser(
                                     errors.append(
                                         f"Archivo {position}: formato o tamaño rechazado"
                                     )
-                                handled_download_ids.add(id(download))
                             except PlaywrightTimeoutError:
                                 errors.append(
                                     f"Archivo {position}: el botón no inició la descarga"
@@ -1041,13 +1056,14 @@ def download_with_browser(
                             page,
                             diagnostics,
                         )
+                        _save_failure_screenshot(page, provider)
                 else:
                     for selector in ordered_selectors:
                         elapsed = monotonic() - started_at
-                        if elapsed >= browser_total_timeout_seconds:
+                        if elapsed >= BROWSER_TOTAL_TIMEOUT_SECONDS:
                             print(
                                 f"[{provider}] Tiempo máximo del navegador alcanzado "
-                                f"({browser_total_timeout_seconds}s)"
+                                f"({BROWSER_TOTAL_TIMEOUT_SECONDS}s)"
                             )
                             break
 
@@ -1087,7 +1103,6 @@ def download_with_browser(
                                     saved_paths=saved_paths,
                                     allow_http_handoff=allow_http_handoff,
                                 )
-                                handled_download_ids.add(id(download))
                                 break
                         except PlaywrightTimeoutError:
                             advanced_page = _page_after_timed_out_click(
@@ -1119,7 +1134,7 @@ def download_with_browser(
                         remaining = max(
                             0,
                             int(
-                                browser_total_timeout_seconds
+                                BROWSER_TOTAL_TIMEOUT_SECONDS
                                 - (monotonic() - started_at)
                             ),
                         )
@@ -1133,15 +1148,8 @@ def download_with_browser(
                                 page,
                                 provider,
                                 download_selectors,
-                                max_seconds=min(
-                                    smart_browser_max_seconds,
-                                    remaining,
-                                ),
+                                max_seconds=min(30, remaining),
                                 search_all_frames=search_all_frames,
-                                max_stages=smart_browser_max_stages,
-                                stage_settle_ms=(
-                                    smart_browser_stage_settle_ms
-                                ),
                             )
                             page = smart_result.page
                             download = smart_result.download
@@ -1157,47 +1165,6 @@ def download_with_browser(
                                     saved_paths=saved_paths,
                                     allow_http_handoff=allow_http_handoff,
                                 )
-                                handled_download_ids.add(id(download))
-
-                    if (
-                        not handoffs
-                        and not saved_paths
-                        and async_download_grace_seconds > 0
-                    ):
-                        try:
-                            page.wait_for_timeout(
-                                async_download_grace_seconds * 1_000
-                            )
-                        except Exception:
-                            pass
-
-                    pending_downloads = [
-                        (source_page, download)
-                        for source_page, download in observed_downloads
-                        if id(download) not in handled_download_ids
-                    ]
-                    if (
-                        not handoffs
-                        and not saved_paths
-                        and pending_downloads
-                    ):
-                        source_page, download = pending_downloads[-1]
-                        handled_download_ids.add(id(download))
-                        print(
-                            f"[{provider}] Descarga asíncrona detectada; "
-                            "se conservará el archivo iniciado"
-                        )
-                        _capture_download(
-                            download,
-                            page=source_page,
-                            context=context,
-                            provider=provider,
-                            target_dir=target_dir,
-                            request_records=request_records,
-                            handoffs=handoffs,
-                            saved_paths=saved_paths,
-                            allow_http_handoff=allow_http_handoff,
-                        )
 
                     if (
                         not handoffs
@@ -1228,6 +1195,7 @@ def download_with_browser(
                             page,
                             diagnostics,
                         )
+                        _save_failure_screenshot(page, provider)
             finally:
                 # El cierre ocurre antes de salir de sync_playwright(), cuando
                 # el canal del navegador todavía está activo.
@@ -1245,7 +1213,7 @@ def download_with_browser(
         errors.append(safe_error_message(exc))
 
     # Con Chromium ya cerrado, las descargas grandes continúan una por una por
-    # HTTP en bloques sobre el volumen de Cloud Storage.
+    # HTTP en bloques sobre el volumen persistente configurado.
     for handoff in handoffs:
         path = download_direct(
             handoff.url,

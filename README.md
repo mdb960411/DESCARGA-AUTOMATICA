@@ -1,60 +1,33 @@
-# Descarga Automática Gmail → Google Drive V4.5.6
+# Descarga Automática Gmail → Google Drive V5
 
-Job de Cloud Run para procesar correos de Gmail, descargar adjuntos y enlaces
-de transferencia, y guardar los archivos obtenidos en Google Drive.
+Trabajador persistente para Google Compute Engine que procesa correos de Gmail,
+descarga adjuntos y enlaces de transferencia, y guarda los archivos obtenidos
+en Google Drive.
 
 Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V4.5.6
+## Cambios principales de V5
 
-- El contenedor inicia Xvfb directamente y confirma en el registro cuándo la
-  pantalla virtual está lista.
-- El inicio de Xvfb tiene un límite de 10 segundos; si falla, el trabajo termina
-  con un diagnóstico en vez de quedar activo sin iniciar Python.
-- La aplicación registra una etapa anterior a `VERSION_APP`, lo que permite
-  distinguir un problema de pantalla virtual de un problema de importación.
+- Usa una VM con IP estable y un perfil exclusivo de Chromium persistente.
+- Conserva cookies, almacenamiento local y Service Workers entre ejecuciones.
+- Ejecuta Chromium visible dentro de una pantalla virtual, sin abrir puertos.
+- Descarga archivos grandes sobre el disco persistente, nunca en memoria.
+- Impide dos ejecuciones simultáneas con un bloqueo local exclusivo.
+- Reintenta fallos transitorios hasta cinco ejecuciones y separa los enlaces
+  definitivamente caducados.
+- Obtiene los JSON OAuth desde Secret Manager como archivos temporales privados.
+- Guarda hasta veinte capturas privadas de diagnóstico cuando un proveedor
+  cambia su interfaz.
+- Publica las etiquetas de imagen `vm-v5`, `latest` y el SHA del commit.
+- Incluye unidades de systemd para ejecución manual, cada 15 minutos o al
+  encender la VM.
 
-- WeTransfer y SendAllFiles ejecutan Chromium visible dentro de una pantalla
-  virtual Xvfb en Cloud Run.
-- El modo visible reproduce con mayor fidelidad el navegador donde las tarjetas
-  `Descargar` y la validación automática de Cloudflare sí aparecen.
-- Las sesiones bloqueadas esperan 30 segundos y se reemplazan rápidamente, en
-  vez de consumir entre 60 y 75 segundos sin cambios.
-- El contenedor registra `Navegador visible virtual activo` para confirmar que
-  el nuevo perfil está funcionando.
+Consulta [ACTUALIZACION_V5_VM.md](ACTUALIZACION_V5_VM.md) para el diseño y
+[DESPLIEGUE_VM_PASO_A_PASO.md](DESPLIEGUE_VM_PASO_A_PASO.md) para instalarlo.
 
-- SendAllFiles ya no interpreta una validación temporal de Cloudflare como
-  una exigencia de descarga manual.
-- Abre hasta tres sesiones independientes de Chromium cuando Turnstile queda
-  pendiente o el botón todavía no aparece.
-- Si las tres sesiones fallan, conserva el correo en la cola de reintentos
-  automáticos en lugar de excluirlo con la etiqueta manual.
-- Nueva variable `SENDALLFILES_DOWNLOAD_ATTEMPTS`, con valor predeterminado
-  `3`.
-
-- Espera hasta 30 segundos el panel real de WeTransfer antes de reemplazar la
-  sesión bloqueada.
-- Descarta enlaces publicitarios como `Sé Ultimate`, planes y promociones,
-  aunque su URL contenga la palabra `download`.
-- Reintenta WeTransfer hasta tres veces con un navegador limpio cuando la
-  interfaz falla de forma transitoria.
-- WeTransfer utiliza su perfil compatible completo para cargar correctamente
-  el panel lateral que contiene `Abrir` y `Descargar`.
-- El navegador inteligente sigue hasta cinco etapas y reconoce
-  `Ir a la transferencia` antes del botón definitivo.
-- Conserva una descarga asíncrona aunque comience unos segundos después del
-  clic y no dentro del evento inmediato esperado por Chromium.
-- Reintenta TransferNow hasta tres veces con un navegador limpio cuando el
-  primer control abre otra etapa pero el proveedor no inicia el archivo.
-- Reintenta el correo en ejecuciones posteriores antes de declararlo como
-  error definitivo.
-- Reconoce duplicados por mensaje, transferencia y contenido.
-- Verifica que Gmail haya aplicado efectivamente cada etiqueta de estado.
-- Ignora confirmaciones de envío de TransferNow.
-- Evita ejecuciones superpuestas cuando Cloud Scheduler activa el job cada
-  15 minutos.
+## Base funcional heredada de V4.4
 
 - Usa un volumen de Cloud Storage para no guardar archivos grandes en la
   memoria de Cloud Run.
@@ -83,8 +56,9 @@ comprimidos.
   directamente sobre el volumen externo.
 - Registra un diagnóstico seguro si la interfaz no aparece, sin publicar
   enlaces, tokens ni nombres de archivos.
-- Cuando Cloudflare no termina temporalmente la validación de SendAllFiles,
-  abre una sesión nueva y mantiene el correo en reintento automático.
+- Cuando Cloudflare no termina la validación de SendAllFiles, etiqueta el
+  correo como `Descarga-Automatica-Manual` en vez de confundirlo con un enlace
+  caducado.
 - WeTransfer, TransferNow y SwissTransfer usan el User-Agent nativo de
   Chromium, buscan controles dentro de marcos y soportan interfaces de varios
   pasos.
@@ -125,17 +99,17 @@ comprimidos.
 
 1. Busca correos que cumplan la consulta configurada.
 2. Extrae adjuntos y enlaces válidos.
-3. Descarga en `/mnt/descargas`, montado sobre Cloud Storage.
+3. Descarga en `/data/downloads`, montado sobre el disco persistente de la VM.
 4. Sube cada archivo a Google Drive de forma reanudable.
 5. Etiqueta el correo según el resultado.
 6. Elimina la copia temporal.
 
 ## Variables obligatorias
 
-- `GOOGLE_CLIENT_SECRET_JSON`
-- `GOOGLE_OAUTH_TOKEN_JSON`
+- `GOOGLE_CLIENT_SECRET_FILE` o `GOOGLE_CLIENT_SECRET_JSON`
+- `GOOGLE_OAUTH_TOKEN_FILE` o `GOOGLE_OAUTH_TOKEN_JSON`
 - `DRIVE_FOLDER_ID`
-- `DOWNLOAD_DIR=/mnt/descargas`
+- `DOWNLOAD_DIR=/data/downloads`
 
 ## Variables recomendadas
 
@@ -153,6 +127,11 @@ DOWNLOAD_CHUNK_SIZE_MB=4
 UPLOAD_CHUNK_SIZE_MB=8
 UPLOAD_RETRIES=3
 DOWNLOAD_TIMEOUT_SECONDS=1800
+BROWSER_PROFILE_DIR=/data/chrome-profile
+STATE_DIR=/data/state
+BROWSER_HEADLESS=false
+BROWSER_PROVIDER_ATTEMPTS=2
+MAX_MESSAGE_ATTEMPTS=5
 BROWSER_HTTP_HANDOFF=true
 EXCLUDE_ERROR_MESSAGES=true
 EXCLUDE_IGNORED_MESSAGES=true
@@ -160,12 +139,6 @@ EXCLUDE_MANUAL_MESSAGES=true
 BROWSER_ACTION_DIAGNOSTICS=true
 ENABLE_SENDGB=true
 MARK_AS_READ=true
-WETRANSFER_DOWNLOAD_ATTEMPTS=3
-TRANSFERNOW_DOWNLOAD_ATTEMPTS=3
-SENDALLFILES_DOWNLOAD_ATTEMPTS=3
-PROVIDER_RETRY_DELAY_SECONDS=2
-TRANSIENT_RETRY_RUNS=3
-EXECUTION_LOCK_TTL_SECONDS=3600
 ```
 
 Filtros opcionales:
@@ -192,29 +165,26 @@ a producción gráfica. Para configurarla manualmente:
 - `Descarga-Automatica-Error`: el mensaje requiere revisión.
 - `Descarga-Automatica-Ignorado`: el correo no contenía archivos útiles o no
   cumplía las reglas. Se conserva como no leído.
-- `Descarga-Automatica-Manual`: reservado para una exigencia humana real del
-  proveedor. Se conserva como no leído.
-- `Descarga-Automatica-Reintento-1` y `-2`: el proveedor presentó un fallo
-  técnico y el mensaje se procesará nuevamente de forma automática.
+- `Descarga-Automatica-Manual`: el enlace sigue requiriendo intervención
+  humana, por ejemplo cuando Cloudflare no completa su validación en Cloud
+  Run. Se conserva como no leído.
+- `Descarga-Automatica-Reintento`: el fallo parece transitorio y volverá a
+  intentarse automáticamente. Después del límite pasa a error.
 
 Los mensajes con etiquetas de error, manual o ignorado se excluyen de
 ejecuciones posteriores. Para reintentar un correo, corrige la causa, elimina
 su etiqueta de estado y consérvalo como no leído.
 
-La firma esperada al iniciar esta versión es:
+## Despliegue recomendado
 
-```text
-VERSION_APP: V4.5.6-XVFB-STARTUP-GUARD-2026-07-31
-```
+Consulta [DESPLIEGUE_VM_PASO_A_PASO.md](DESPLIEGUE_VM_PASO_A_PASO.md).
 
-## Despliegue
-
-Para actualizar desde V4.5.5 consulta
-[ACTUALIZACION_V4_5_6.md](ACTUALIZACION_V4_5_6.md). Para un despliegue nuevo
-consulta [DESPLIEGUE_PASO_A_PASO.md](DESPLIEGUE_PASO_A_PASO.md).
+La guía anterior de Cloud Run permanece disponible solo como referencia y
+como plan de reversión.
 
 ## Seguridad
 
 No subas `token.json`, `credentials.json`, `.env` ni secretos al repositorio.
-El bucket temporal debe permanecer privado y la cuenta del job solo debe tener
-el rol `roles/storage.objectUser` sobre ese bucket.
+La VM obtiene las dos credenciales directamente desde Secret Manager durante
+cada ejecución. El perfil del navegador y los diagnósticos permanecen en el
+disco privado de la VM.

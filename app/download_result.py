@@ -17,7 +17,6 @@ class DownloadResult:
     paths: list[Path] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     manual_actions: list[str] = field(default_factory=list)
-    retryable: bool = False
 
     @classmethod
     def from_value(cls, value, default_error):

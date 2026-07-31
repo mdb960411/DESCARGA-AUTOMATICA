@@ -26,33 +26,6 @@ OPTIMIZED_LAUNCH_ARGUMENTS = [
     "--js-flags=--max-old-space-size=192",
 ]
 
-WETRANSFER_BROWSER_OPTIONS = {
-    "wait_for_download_controls_seconds": 30,
-    "headed_mode": True,
-    "compatibility_mode": True,
-    "native_user_agent": True,
-    "allow_service_workers": True,
-    "search_all_frames": True,
-    "browser_total_timeout_seconds": 100,
-    "smart_browser_max_seconds": 30,
-    "smart_browser_max_stages": 5,
-    "smart_browser_stage_settle_ms": 1_000,
-    "async_download_grace_seconds": 3,
-}
-
-SENDALLFILES_BROWSER_OPTIONS = {
-    "wait_for_download_controls_seconds": 30,
-    "headed_mode": True,
-    "compatibility_mode": True,
-    "search_all_frames": True,
-    # Conserva la sesión validada por Cloudflare mientras Chromium escribe
-    # directamente en el volumen externo montado.
-    "allow_http_handoff": False,
-    # Turnstile puede completarse automáticamente en una sesión nueva.
-    # Un estado pendiente es transitorio, no una exigencia humana.
-    "manual_on_pending_challenge": False,
-}
-
 
 def browser_launch_arguments(compatibility_mode=False):
     """

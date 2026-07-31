@@ -1,49 +1,25 @@
 import importlib.util
-import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from tempfile import TemporaryDirectory
 
-from app.action_policy import (
-    TRANSFER_CONTINUE_WORDS,
-    is_marketing_action,
-)
 from app.browser_profile import (
-    SENDALLFILES_BROWSER_OPTIONS,
     USER_AGENT,
-    WETRANSFER_BROWSER_OPTIONS,
     browser_context_options,
     browser_launch_arguments,
 )
 from app.config import Config
 from app.download_result import DownloadResult
-from app.execution_lock import ExecutionLock
-from app.idempotency import (
-    file_md5,
-    find_content_duplicate,
-)
-from app.message_rules import (
-    is_sender_confirmation,
-    retry_label_names,
-)
+from app.failure_policy import failure_is_permanent
 from app.response_rules import (
     best_file_response,
     browser_file_response_score,
 )
 from app.link_policy import is_useful_email_link
-from app.link_utils import (
-    canonical_link_key,
-    source_link_fingerprint,
-)
-from app.retry_policy import (
-    download_with_retries,
-    errors_are_retryable,
-)
-from app.status import (
-    execution_status,
-    manual_action_for_reason,
-    next_retry_attempt,
-)
+from app.link_utils import canonical_link_key
+from app.status import execution_status, manual_action_for_reason
+from app.retry_state import RetryState
+from app.runtime import ExecutionLock
 from app.utils import safe_filename, url_for_log
 
 
@@ -65,62 +41,6 @@ class CoreTests(unittest.TestCase):
             Config.max_file_size_bytes(),
             8192 * 1024 * 1024,
         )
-
-    def test_transfernow_retries_default_to_three(self):
-        self.assertEqual(Config.transfernow_download_attempts, 3)
-
-    def test_sendallfiles_retries_default_to_three(self):
-        self.assertEqual(Config.sendallfiles_download_attempts, 3)
-
-    def test_sendallfiles_uses_fresh_browser_retries(self):
-        self.assertEqual(
-            Config.download_attempts_for("sendallfiles"),
-            Config.sendallfiles_download_attempts,
-        )
-
-    def test_sendallfiles_pending_cloudflare_is_not_manual(self):
-        self.assertFalse(
-            SENDALLFILES_BROWSER_OPTIONS[
-                "manual_on_pending_challenge"
-            ]
-        )
-
-    def test_dynamic_providers_use_virtual_visible_browser(self):
-        self.assertTrue(WETRANSFER_BROWSER_OPTIONS["headed_mode"])
-        self.assertTrue(SENDALLFILES_BROWSER_OPTIONS["headed_mode"])
-
-    def test_blocked_sessions_rotate_quickly(self):
-        self.assertEqual(
-            WETRANSFER_BROWSER_OPTIONS[
-                "wait_for_download_controls_seconds"
-            ],
-            30,
-        )
-        self.assertEqual(
-            SENDALLFILES_BROWSER_OPTIONS[
-                "wait_for_download_controls_seconds"
-            ],
-            30,
-        )
-
-    def test_container_starts_a_virtual_display(self):
-        project_root = Path(__file__).parents[1]
-        dockerfile = (
-            project_root / "Dockerfile"
-        ).read_text(encoding="utf-8")
-        startup = (project_root / "start.sh").read_text(encoding="utf-8")
-        self.assertIn('CMD ["/app/start.sh"]', dockerfile)
-        self.assertIn("Xvfb", startup)
-        self.assertIn("-displayfd 3", startup)
-        self.assertIn("1280x800x24", startup)
-
-    def test_virtual_display_startup_has_a_timeout_and_diagnostics(self):
-        startup = (
-            Path(__file__).parents[1] / "start.sh"
-        ).read_text(encoding="utf-8")
-        self.assertIn('STARTUP_CHECK" -ge 100', startup)
-        self.assertIn("Xvfb no respondió dentro de 10 segundos", startup)
-        self.assertIn("Iniciando aplicación Python", startup)
 
     def test_email_asset_is_filtered_but_graphic_file_is_not(self):
         filters = load_filters()
@@ -184,159 +104,6 @@ class CoreTests(unittest.TestCase):
             "https://wetransfer.com/downloads/transfer123/secret456/file-b?utm=1"
         )
         self.assertEqual(first, second)
-        self.assertEqual(
-            source_link_fingerprint(
-                "https://wetransfer.com/downloads/"
-                "transfer123/secret456/file-a"
-            ),
-            source_link_fingerprint(
-                "https://wetransfer.com/downloads/"
-                "transfer123/secret456/file-b?utm=1"
-            ),
-        )
-
-    def test_wetransfer_retries_with_a_clean_handler_call(self):
-        handler = Mock(
-            side_effect=[
-                DownloadResult(
-                    errors=[
-                        "La página cargó controles, pero el proveedor "
-                        "cambió el botón de descarga"
-                    ]
-                ),
-                DownloadResult(paths=[Path("trabajo.zip")]),
-            ]
-        )
-        sleep_fn = Mock()
-
-        result = download_with_retries(
-            handler,
-            "https://wetransfer.com/downloads/a/b",
-            Path("/tmp"),
-            provider="wetransfer",
-            max_attempts=3,
-            retry_delay_seconds=2,
-            sleep_fn=sleep_fn,
-        )
-
-        self.assertEqual(result.paths, [Path("trabajo.zip")])
-        self.assertEqual(result.errors, [])
-        self.assertEqual(handler.call_count, 2)
-        sleep_fn.assert_called_once_with(2)
-
-    def test_transfernow_retries_with_a_clean_handler_call(self):
-        handler = Mock(
-            side_effect=[
-                DownloadResult(
-                    errors=[
-                        "La página cargó controles, pero el proveedor "
-                        "cambió el botón de descarga"
-                    ]
-                ),
-                DownloadResult(paths=[Path("MJ327_114.pdf")]),
-            ]
-        )
-        sleep_fn = Mock()
-
-        result = download_with_retries(
-            handler,
-            "https://www.transfernow.net/dl/transfer/token",
-            Path("/tmp"),
-            provider="transfernow",
-            max_attempts=Config.transfernow_download_attempts,
-            retry_delay_seconds=2,
-            sleep_fn=sleep_fn,
-        )
-
-        self.assertEqual(result.paths, [Path("MJ327_114.pdf")])
-        self.assertEqual(result.errors, [])
-        self.assertEqual(handler.call_count, 2)
-        sleep_fn.assert_called_once_with(2)
-
-    def test_expired_wetransfer_link_is_not_retried(self):
-        handler = Mock(
-            return_value=DownloadResult(
-                errors=[
-                    "El proveedor informa que el enlace está caducado "
-                    "o ya no está disponible"
-                ]
-            )
-        )
-
-        result = download_with_retries(
-            handler,
-            "https://wetransfer.com/downloads/a/b",
-            Path("/tmp"),
-            provider="wetransfer",
-            max_attempts=3,
-            retry_delay_seconds=0,
-        )
-
-        self.assertFalse(result.retryable)
-        self.assertEqual(handler.call_count, 1)
-
-    def test_transient_download_error_is_retryable(self):
-        self.assertTrue(
-            errors_are_retryable(
-                ["No se encontró un control de descarga"]
-            )
-        )
-        self.assertFalse(
-            errors_are_retryable(
-                ["La transferencia requiere una contraseña"]
-            )
-        )
-
-    def test_wetransfer_ultimate_ad_is_not_a_download_action(self):
-        self.assertTrue(
-            is_marketing_action(
-                "Sé Ultimate",
-                "https://wetransfer.com/explore/download",
-            )
-        )
-        self.assertTrue(
-            is_marketing_action(
-                "View plans",
-                "https://wetransfer.com/pricing",
-            )
-        )
-        self.assertFalse(
-            is_marketing_action(
-                "Descargar todo",
-                "https://wetransfer.com/downloads/a/b",
-            )
-        )
-
-    def test_wetransfer_multistep_controls_are_recognized(self):
-        self.assertIn(
-            "ir a la transferencia",
-            TRANSFER_CONTINUE_WORDS,
-        )
-
-    def test_wetransfer_uses_compatible_multistep_browser(self):
-        self.assertTrue(
-            WETRANSFER_BROWSER_OPTIONS["compatibility_mode"]
-        )
-        self.assertEqual(
-            WETRANSFER_BROWSER_OPTIONS[
-                "wait_for_download_controls_seconds"
-            ],
-            30,
-        )
-        self.assertEqual(
-            WETRANSFER_BROWSER_OPTIONS["smart_browser_max_stages"],
-            5,
-        )
-        self.assertEqual(
-            WETRANSFER_BROWSER_OPTIONS["smart_browser_max_seconds"],
-            30,
-        )
-        self.assertEqual(
-            WETRANSFER_BROWSER_OPTIONS[
-                "async_download_grace_seconds"
-            ],
-            3,
-        )
 
     def test_security_alert_and_html_assets_are_not_download_links(self):
         for url in (
@@ -423,71 +190,11 @@ class CoreTests(unittest.TestCase):
             "Descarga-Automatica-Manual",
         )
 
-    def test_retry_labels_are_bounded(self):
+    def test_retry_email_label_is_configured(self):
         self.assertEqual(
-            retry_label_names(
-                "Descarga-Automatica-Reintento",
-                3,
-            ),
-            [
-                "Descarga-Automatica-Reintento-1",
-                "Descarga-Automatica-Reintento-2",
-            ],
+            Config.retry_label,
+            "Descarga-Automatica-Reintento",
         )
-
-    def test_transfernow_sender_confirmation_is_ignored(self):
-        self.assertTrue(
-            is_sender_confirmation(
-                "noreply@transfernow.net",
-                'Su archivo "MJ327_114.pdf" se ha enviado '
-                "con éxito a pruebas@example.com",
-            )
-        )
-        self.assertFalse(
-            is_sender_confirmation(
-                "noreply@transfernow.net",
-                'Alonso te envió "MJ327_114.pdf" por TransferNow',
-            )
-        )
-
-    def test_content_hash_recognizes_identical_file(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "trabajo.zip"
-            path.write_bytes(b"contenido")
-            first = file_md5(path)
-            path.write_bytes(b"contenido")
-            second = file_md5(path)
-        self.assertEqual(first, second)
-
-    def test_execution_lock_prevents_overlap_and_is_released(self):
-        with tempfile.TemporaryDirectory() as directory:
-            first = ExecutionLock.acquire(directory, ttl_seconds=60)
-            second = ExecutionLock.acquire(directory, ttl_seconds=60)
-            self.assertIsNotNone(first)
-            self.assertIsNone(second)
-
-            first.release()
-            third = ExecutionLock.acquire(directory, ttl_seconds=60)
-            self.assertIsNotNone(third)
-            third.release()
-
-    def test_drive_falls_back_to_name_size_and_md5(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "trabajo.zip"
-            path.write_bytes(b"contenido repetido")
-            candidate = {
-                "id": "drive-id",
-                "name": path.name,
-                "size": str(path.stat().st_size),
-                "md5Checksum": file_md5(path),
-                "appProperties": {},
-            }
-            existing = find_content_duplicate(
-                path,
-                [candidate],
-            )
-
-        self.assertEqual(existing["id"], "drive-id")
 
     def test_compatibility_profile_uses_native_browser_features(self):
         options = browser_context_options(compatibility_mode=True)
@@ -545,26 +252,39 @@ class CoreTests(unittest.TestCase):
             "COMPLETADO_CON_ERRORES",
         )
         self.assertEqual(
-            execution_status(
-                {**base, "messages_retry_pending": 1}
-            ),
+            execution_status({**base, "messages_retry_pending": 1}),
             "REINTENTOS_PENDIENTES",
         )
 
-    def test_scheduled_retry_stops_at_the_limit(self):
-        self.assertEqual(
-            next_retry_attempt(0, retryable=True, max_runs=3),
-            1,
+    def test_retry_state_is_persistent_and_can_be_cleared(self):
+        with TemporaryDirectory() as directory:
+            first = RetryState(Path(directory))
+            self.assertEqual(first.increment("mensaje-1"), 1)
+            self.assertEqual(first.increment("mensaje-1"), 2)
+
+            second = RetryState(Path(directory))
+            self.assertEqual(second.count("mensaje-1"), 2)
+            second.clear("mensaje-1")
+            self.assertEqual(second.count("mensaje-1"), 0)
+
+    def test_execution_lock_rejects_a_second_worker(self):
+        with TemporaryDirectory() as directory:
+            lock_path = Path(directory) / "worker.lock"
+            with ExecutionLock(lock_path) as first:
+                self.assertTrue(first)
+                with ExecutionLock(lock_path) as second:
+                    self.assertFalse(second)
+
+    def test_expired_provider_link_is_a_permanent_failure(self):
+        self.assertTrue(
+            failure_is_permanent(
+                ["El proveedor informa que el enlace está caducado"]
+            )
         )
-        self.assertEqual(
-            next_retry_attempt(1, retryable=True, max_runs=3),
-            2,
-        )
-        self.assertIsNone(
-            next_retry_attempt(2, retryable=True, max_runs=3)
-        )
-        self.assertIsNone(
-            next_retry_attempt(0, retryable=False, max_runs=3)
+        self.assertFalse(
+            failure_is_permanent(
+                ["La interfaz dinámica todavía no está disponible"]
+            )
         )
 
 

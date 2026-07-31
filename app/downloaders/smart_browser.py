@@ -8,11 +8,6 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from app.action_policy import (
-    TRANSFER_CONTINUE_WORDS,
-    is_marketing_action,
-)
-
 
 DOWNLOAD_WORDS = (
     "download",
@@ -30,7 +25,13 @@ DOWNLOAD_WORDS = (
     "save files",
 )
 
-CONTINUE_WORDS = TRANSFER_CONTINUE_WORDS
+CONTINUE_WORDS = (
+    "continue",
+    "continuar",
+    "proceed",
+    "siguiente",
+    "next",
+)
 
 NEGATIVE_WORDS = (
     "upload",
@@ -225,8 +226,6 @@ def _candidate_score(metadata):
         for domain in BLOCKED_ACTION_DOMAINS
     ):
         return -100
-    if is_marketing_action(fields, href):
-        return -100
 
     score = 0
     if any(word in fields for word in DOWNLOAD_WORDS):
@@ -411,51 +410,41 @@ def try_smart_download(
     max_seconds=30,
     *,
     search_all_frames=False,
-    max_stages=3,
-    stage_settle_ms=600,
 ):
     selectors = build_download_selectors(extra_selectors)
     started_at = monotonic()
     candidates_tested = 0
     max_candidates = 24
+    max_stages = 3
     stage = 1
     active_page = page
     progressed_any = False
     tested_states = set()
-    empty_polls = 0
 
     while (
         monotonic() - started_at < max_seconds
         and candidates_tested < max_candidates
         and stage <= max_stages
     ):
-        metadata_candidates = _metadata_candidates(
-            active_page,
-            search_all_frames,
-        )
-        # La enumeración genérica de selectores puede tardar varios segundos
-        # en páginas con muchos marcos. Se usa solo como respaldo cuando los
-        # controles visibles no entregan suficiente información semántica.
-        candidates = metadata_candidates or _selector_candidates(
+        candidates = _selector_candidates(
             active_page,
             selectors,
             search_all_frames,
         )
+        metadata_candidates = _metadata_candidates(
+            active_page,
+            search_all_frames,
+        )
+
+        known_ids = {candidate.identity for candidate in candidates}
+        candidates.extend(
+            candidate
+            for candidate in metadata_candidates
+            if candidate.identity not in known_ids
+        )
 
         if not candidates:
-            if (
-                progressed_any
-                and empty_polls < 8
-                and monotonic() - started_at < max_seconds
-            ):
-                empty_polls += 1
-                try:
-                    active_page.wait_for_timeout(1_000)
-                except Exception:
-                    pass
-                continue
             break
-        empty_polls = 0
 
         progressed_stage = False
         state_before_stage = _page_state(active_page)
@@ -548,10 +537,6 @@ def try_smart_download(
                     f"[{provider}] La acción avanzó la interfaz; "
                     "se buscará el siguiente control"
                 )
-                try:
-                    active_page.wait_for_timeout(stage_settle_ms)
-                except Exception:
-                    pass
                 break
 
         if not progressed_stage:
