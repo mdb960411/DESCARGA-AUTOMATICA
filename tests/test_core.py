@@ -85,6 +85,31 @@ class CoreTests(unittest.TestCase):
             ]
         )
 
+    def test_dynamic_providers_use_virtual_visible_browser(self):
+        self.assertTrue(WETRANSFER_BROWSER_OPTIONS["headed_mode"])
+        self.assertTrue(SENDALLFILES_BROWSER_OPTIONS["headed_mode"])
+
+    def test_blocked_sessions_rotate_quickly(self):
+        self.assertEqual(
+            WETRANSFER_BROWSER_OPTIONS[
+                "wait_for_download_controls_seconds"
+            ],
+            30,
+        )
+        self.assertEqual(
+            SENDALLFILES_BROWSER_OPTIONS[
+                "wait_for_download_controls_seconds"
+            ],
+            30,
+        )
+
+    def test_container_starts_a_virtual_display(self):
+        dockerfile = (
+            Path(__file__).parents[1] / "Dockerfile"
+        ).read_text(encoding="utf-8")
+        self.assertIn("xvfb-run", dockerfile)
+        self.assertIn("1280x800x24", dockerfile)
+
     def test_email_asset_is_filtered_but_graphic_file_is_not(self):
         filters = load_filters()
         ignored, _ = filters.should_ignore_url(
@@ -284,7 +309,7 @@ class CoreTests(unittest.TestCase):
             WETRANSFER_BROWSER_OPTIONS[
                 "wait_for_download_controls_seconds"
             ],
-            75,
+            30,
         )
         self.assertEqual(
             WETRANSFER_BROWSER_OPTIONS["smart_browser_max_stages"],
@@ -292,7 +317,7 @@ class CoreTests(unittest.TestCase):
         )
         self.assertEqual(
             WETRANSFER_BROWSER_OPTIONS["smart_browser_max_seconds"],
-            75,
+            30,
         )
         self.assertEqual(
             WETRANSFER_BROWSER_OPTIONS[

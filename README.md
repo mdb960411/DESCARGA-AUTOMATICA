@@ -1,4 +1,4 @@
-# Descarga Automática Gmail → Google Drive V4.5.4
+# Descarga Automática Gmail → Google Drive V4.5.5
 
 Job de Cloud Run para procesar correos de Gmail, descargar adjuntos y enlaces
 de transferencia, y guardar los archivos obtenidos en Google Drive.
@@ -7,7 +7,16 @@ Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V4.5.4
+## Cambios principales de V4.5.5
+
+- WeTransfer y SendAllFiles ejecutan Chromium visible dentro de una pantalla
+  virtual Xvfb en Cloud Run.
+- El modo visible reproduce con mayor fidelidad el navegador donde las tarjetas
+  `Descargar` y la validación automática de Cloudflare sí aparecen.
+- Las sesiones bloqueadas esperan 30 segundos y se reemplazan rápidamente, en
+  vez de consumir entre 60 y 75 segundos sin cambios.
+- El contenedor registra `Navegador visible virtual activo` para confirmar que
+  el nuevo perfil está funcionando.
 
 - SendAllFiles ya no interpreta una validación temporal de Cloudflare como
   una exigencia de descarga manual.
@@ -18,7 +27,8 @@ comprimidos.
 - Nueva variable `SENDALLFILES_DOWNLOAD_ATTEMPTS`, con valor predeterminado
   `3`.
 
-- Espera hasta 75 segundos el panel real de WeTransfer.
+- Espera hasta 30 segundos el panel real de WeTransfer antes de reemplazar la
+  sesión bloqueada.
 - Descarta enlaces publicitarios como `Sé Ultimate`, planes y promociones,
   aunque su URL contenga la palabra `download`.
 - Reintenta WeTransfer hasta tres veces con un navegador limpio cuando la
@@ -187,13 +197,13 @@ su etiqueta de estado y consérvalo como no leído.
 La firma esperada al iniciar esta versión es:
 
 ```text
-VERSION_APP: V4.5.4-SENDALLFILES-AUTO-RETRY-2026-07-30
+VERSION_APP: V4.5.5-VIRTUAL-DISPLAY-2026-07-31
 ```
 
 ## Despliegue
 
-Para actualizar desde V4.5.3 consulta
-[ACTUALIZACION_V4_5_4.md](ACTUALIZACION_V4_5_4.md). Para un despliegue nuevo
+Para actualizar desde V4.5.4 consulta
+[ACTUALIZACION_V4_5_5.md](ACTUALIZACION_V4_5_5.md). Para un despliegue nuevo
 consulta [DESPLIEGUE_PASO_A_PASO.md](DESPLIEGUE_PASO_A_PASO.md).
 
 ## Seguridad

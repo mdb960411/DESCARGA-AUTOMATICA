@@ -804,6 +804,7 @@ def download_with_browser(
     *,
     download_all=False,
     wait_for_download_controls_seconds=0,
+    headed_mode=False,
     compatibility_mode=False,
     native_user_agent=False,
     allow_service_workers=False,
@@ -848,7 +849,7 @@ def download_with_browser(
         with sync_playwright() as playwright:
             try:
                 browser = playwright.chromium.launch(
-                    headless=True,
+                    headless=not headed_mode,
                     downloads_path=str(browser_download_dir),
                     args=browser_launch_arguments(compatibility_mode),
                 )
@@ -906,6 +907,11 @@ def download_with_browser(
                 )
                 page.set_default_timeout(10_000)
                 page.set_default_navigation_timeout(90_000)
+
+                if headed_mode:
+                    print(
+                        f"[{provider}] Navegador visible virtual activo"
+                    )
 
                 if compatibility_mode:
                     print(

@@ -1,5 +1,14 @@
 # Historial de cambios
 
+## V4.5.5 — Navegador visible sobre pantalla virtual
+
+- WeTransfer y SendAllFiles usan Chromium visible dentro de Xvfb en Cloud Run.
+- El Dockerfile instala y activa `xvfb` y `xauth` antes de iniciar la app.
+- Las sesiones sin panel descargable se reemplazan después de 30 segundos.
+- WeTransfer conserva cinco etapas inteligentes, pero limita cada sesión a
+  100 segundos.
+- Nueva firma `V4.5.5-VIRTUAL-DISPLAY-2026-07-31`.
+
 ## V4.5.4 — Reintento automático de SendAllFiles
 
 - Una validación temporalmente pendiente de Cloudflare deja de clasificarse

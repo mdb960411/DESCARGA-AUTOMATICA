@@ -1,4 +1,4 @@
-# Despliegue paso a paso — V4.5.4
+# Despliegue paso a paso — V4.5.5
 
 Configuración preparada para:
 
@@ -123,7 +123,7 @@ inmediato**.
 3. Revisa que el log comience con:
 
    ```text
-   VERSION_APP: V4.5.4-SENDALLFILES-AUTO-RETRY-2026-07-30
+   VERSION_APP: V4.5.5-VIRTUAL-DISPLAY-2026-07-31
    ```
 
 4. Para SendGB, el log esperado incluye:
@@ -150,6 +150,7 @@ inmediato**.
 5. El log debe comenzar con:
 
    ```text
+   [SENDALLFILES] Navegador visible virtual activo
    [SENDALLFILES] Modo compatible activo
    ```
 
@@ -199,7 +200,7 @@ Significa que la validación automática no terminó en esa sesión de Cloud Run
 
 ## 11. Correos sin archivos
 
-La V4.5.4 crea automáticamente la etiqueta
+La V4.5.5 crea automáticamente la etiqueta
 `Descarga-Automatica-Ignorado`. Un correo sin adjuntos o enlaces útiles:
 
 - no se considera error;
