@@ -10,6 +10,7 @@ from googleapiclient.discovery import build
 from app.config import Config
 from app.link_policy import is_useful_email_link
 from app.link_utils import canonical_link_key
+from app.message_policy import is_provider_sender_confirmation
 from app.utils import decode_base64url, extension_allowed, safe_filename, unique_path
 
 
@@ -114,6 +115,13 @@ class GmailClient:
             if Config.keyword not in combined:
                 return False
         return True
+
+    @classmethod
+    def is_provider_sender_confirmation(cls, message):
+        return is_provider_sender_confirmation(
+            cls.sender_email(message),
+            cls.subject(message),
+        )
 
     @staticmethod
     def _clean_url(raw_url):

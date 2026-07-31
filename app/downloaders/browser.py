@@ -39,6 +39,11 @@ from app.utils import (
 )
 
 CONSENT_SELECTORS = [
+    "button:text-is('Rechazarlas todas')",
+    "button:text-is('Rechazar todas')",
+    "button:text-is('Reject all')",
+    "button:text-is('Acepto')",
+    "button:text-is('I accept')",
     "button:has-text('Accept all')",
     "button:has-text('Accept')",
     "button:has-text('Aceptar todo')",
@@ -49,6 +54,18 @@ CONSENT_SELECTORS = [
     "button:has-text('I accept')",
     "button:has-text('J’accepte')",
     "button:has-text('Accepter')",
+]
+
+OVERLAY_CLOSE_SELECTORS = [
+    "button:text-is('Close')",
+    "[role='button']:text-is('Close')",
+    "a:text-is('Close')",
+    "button:text-is('Cerrar')",
+    "[role='button']:text-is('Cerrar')",
+    "a:text-is('Cerrar')",
+    "[aria-label='Close' i]",
+    "[title='Close' i]",
+    "text=Close",
 ]
 
 GENERIC_DOWNLOAD_SELECTORS = [
@@ -133,6 +150,11 @@ def _locator_action_allowed(locator):
         or "search results for" in label
         or "advertisement" in label
         or "anuncio" in label
+        or "sé ultimate" in label
+        or "se ultimate" in label
+        or "go ultimate" in label
+        or "ultimate now" in label
+        or "upgrade" in label
     ):
         return False
     return True
@@ -415,6 +437,39 @@ def _click_consent(page, search_all_frames):
     return False
 
 
+def _dismiss_provider_overlays(
+    page,
+    provider,
+    search_all_frames,
+):
+    changed = False
+    if _click_consent(page, search_all_frames):
+        print(f"[{provider}] Panel de privacidad cerrado")
+        changed = True
+        try:
+            page.wait_for_timeout(750)
+        except Exception:
+            pass
+
+    if provider == "TRANSFERNOW":
+        for root_name, root in _browser_roots(
+            page,
+            search_all_frames=True,
+        ):
+            if click_if_visible(root, OVERLAY_CLOSE_SELECTORS):
+                print(
+                    f"[{provider}] Ventana publicitaria cerrada "
+                    f"({root_name})"
+                )
+                changed = True
+                try:
+                    page.wait_for_timeout(750)
+                except Exception:
+                    pass
+                break
+    return changed
+
+
 def _normalized_text(value):
     text = unicodedata.normalize("NFKD", str(value or ""))
     text = "".join(
@@ -512,7 +567,11 @@ def _wait_for_download_controls(
     next_progress_log = 15
 
     while True:
-        _click_consent(page, search_all_frames)
+        _dismiss_provider_overlays(
+            page,
+            provider,
+            search_all_frames,
+        )
         _advance_provider_gate(
             page,
             provider,
@@ -521,7 +580,13 @@ def _wait_for_download_controls(
 
         for root_name, root in _browser_roots(page, search_all_frames):
             for selector in selectors:
-                indices = _visible_indices(root, selector)
+                indices = [
+                    index
+                    for index in _visible_indices(root, selector)
+                    if _locator_action_allowed(
+                        root.locator(selector).nth(index)
+                    )
+                ]
                 if indices:
                     return root_name, root, selector, indices
 
@@ -956,7 +1021,11 @@ def download_with_browser(
                             "se continuará esperando la interfaz"
                         )
 
-                _click_consent(page, search_all_frames)
+                _dismiss_provider_overlays(
+                    page,
+                    provider,
+                    search_all_frames,
+                )
                 _advance_provider_gate(
                     page,
                     provider,
@@ -1059,6 +1128,11 @@ def download_with_browser(
                         _save_failure_screenshot(page, provider)
                 else:
                     for selector in ordered_selectors:
+                        _dismiss_provider_overlays(
+                            page,
+                            provider,
+                            search_all_frames,
+                        )
                         elapsed = monotonic() - started_at
                         if elapsed >= BROWSER_TOTAL_TIMEOUT_SECONDS:
                             print(
@@ -1105,6 +1179,16 @@ def download_with_browser(
                                 )
                                 break
                         except PlaywrightTimeoutError:
+                            if _dismiss_provider_overlays(
+                                page,
+                                provider,
+                                search_all_frames,
+                            ):
+                                print(
+                                    f"[{provider}] Se cerró una capa que "
+                                    "bloqueaba la descarga"
+                                )
+                                continue
                             advanced_page = _page_after_timed_out_click(
                                 page,
                                 pages_before,
@@ -1131,6 +1215,11 @@ def download_with_browser(
                             continue
 
                     if not handoffs and not saved_paths:
+                        _dismiss_provider_overlays(
+                            page,
+                            provider,
+                            search_all_frames,
+                        )
                         remaining = max(
                             0,
                             int(

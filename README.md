@@ -1,4 +1,4 @@
-# Descarga Automática Gmail → Google Drive V5
+# Descarga Automática Gmail → Google Drive V5.1
 
 Trabajador persistente para Google Compute Engine que procesa correos de Gmail,
 descarga adjuntos y enlaces de transferencia, y guarda los archivos obtenidos
@@ -8,7 +8,7 @@ Esta versión está preparada para trabajos de industria gráfica y archivos
 grandes como `.ai`, `.ps`, `.eps`, `.indd`, `.psd`, `.tif`, `.pdf` y paquetes
 comprimidos.
 
-## Cambios principales de V5
+## Cambios principales de V5.1
 
 - Usa una VM con IP estable y un perfil exclusivo de Chromium persistente.
 - Conserva cookies, almacenamiento local y Service Workers entre ejecuciones.
@@ -23,9 +23,17 @@ comprimidos.
 - Publica las etiquetas de imagen `vm-v5`, `latest` y el SHA del commit.
 - Incluye unidades de systemd para ejecución manual, cada 15 minutos o al
   encender la VM.
+- Cierra el panel de privacidad observado en WeTransfer antes de buscar el
+  archivo y excluye acciones comerciales como `Sé Ultimate`.
+- Cierra la publicidad superpuesta observada en TransferNow e ignora sus
+  confirmaciones de envío dirigidas al remitente.
+- Distingue la casilla humana real de Cloudflare en SendAllFiles y evita
+  reintentos automáticos que no pueden avanzar.
 
 Consulta [ACTUALIZACION_V5_VM.md](ACTUALIZACION_V5_VM.md) para el diseño y
 [DESPLIEGUE_VM_PASO_A_PASO.md](DESPLIEGUE_VM_PASO_A_PASO.md) para instalarlo.
+El diagnóstico específico de proveedores está en
+[ACTUALIZACION_V5_1.md](ACTUALIZACION_V5_1.md).
 
 ## Base funcional heredada de V4.4
 

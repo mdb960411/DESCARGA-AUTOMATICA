@@ -118,9 +118,10 @@ def download_sendallfiles(url, target_dir):
         # Conserva la sesión validada por Cloudflare mientras Chromium escribe
         # directamente en el volumen externo montado.
         allow_http_handoff=False,
-        # En la VM el perfil es persistente. Una validación aún pendiente debe
-        # reintentarse y no clasificarse prematuramente como descarga manual.
-        manual_on_pending_challenge=False,
+        # Si la VM recibe una casilla explícita de Cloudflare, ningún selector
+        # de descarga puede continuar sin intervención humana. Se clasifica de
+        # forma precisa y se evita repetir cinco veces el mismo desafío.
+        manual_on_pending_challenge=True,
     )
 
 

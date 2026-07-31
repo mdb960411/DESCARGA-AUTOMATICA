@@ -16,7 +16,7 @@ from app.runtime import ExecutionLock, cleanup_stale_runs
 from app.status import execution_status
 from app.utils import safe_error_message, safe_filename, url_for_log
 
-VERSION_APP = "V5.0-PERSISTENT-VM-WORKER-2026-07-31"
+VERSION_APP = "V5.1-OVERLAY-AND-CHALLENGE-2026-07-31"
 
 
 def message_folder(base, index, sender, subject):
@@ -105,6 +105,16 @@ def run():
                     retry_state.clear(message_id)
                     summary["messages_ignored"] += 1
                     print("[CORREO] Estado=IGNORADO. No cumple las reglas")
+                    continue
+
+                if gmail.is_provider_sender_confirmation(message):
+                    gmail.mark_ignored(message_id)
+                    retry_state.clear(message_id)
+                    summary["messages_ignored"] += 1
+                    print(
+                        "[CORREO] Estado=IGNORADO. "
+                        "Es una confirmación de envío y no una recepción"
+                    )
                     continue
 
                 folder = message_folder(

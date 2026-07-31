@@ -17,6 +17,7 @@ from app.response_rules import (
 )
 from app.link_policy import is_useful_email_link
 from app.link_utils import canonical_link_key
+from app.message_policy import is_provider_sender_confirmation
 from app.status import execution_status, manual_action_for_reason
 from app.retry_state import RetryState
 from app.runtime import ExecutionLock
@@ -194,6 +195,22 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(
             Config.retry_label,
             "Descarga-Automatica-Reintento",
+        )
+
+    def test_transfernow_sender_confirmation_is_ignored(self):
+        self.assertTrue(
+            is_provider_sender_confirmation(
+                "noreply@transfernow.net",
+                "Sus archivos se han enviado con éxito a usuario@example.com",
+            )
+        )
+
+    def test_transfernow_recipient_email_is_not_ignored(self):
+        self.assertFalse(
+            is_provider_sender_confirmation(
+                "noreply@transfernow.net",
+                'Alonso te envió "trabajo.zip" por TransferNow',
+            )
         )
 
     def test_compatibility_profile_uses_native_browser_features(self):

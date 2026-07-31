@@ -1,5 +1,17 @@
 # Historial de cambios
 
+## V5.1 — Paneles de privacidad, publicidad y desafío humano
+
+- Cierre explícito del panel de privacidad observado en WeTransfer.
+- Exclusión de `Sé Ultimate` y otras acciones comerciales como candidatos de
+  descarga.
+- Cierre de publicidad superpuesta observada en TransferNow.
+- Las confirmaciones de envío de TransferNow dejan de procesarse como si
+  fueran recepciones.
+- La casilla humana confirmada de Cloudflare en SendAllFiles se etiqueta como
+  intervención manual sin consumir cinco intentos.
+- Nueva firma `V5.1-OVERLAY-AND-CHALLENGE-2026-07-31`.
+
 ## V5.0 — Trabajador persistente en Compute Engine
 
 - Nuevo perfil de Chromium persistente para conservar cookies, almacenamiento

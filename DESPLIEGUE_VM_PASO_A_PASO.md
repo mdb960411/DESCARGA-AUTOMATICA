@@ -1,4 +1,4 @@
-# Despliegue V5 en la VM
+# Despliegue V5.1 en la VM
 
 Esta guía supone que ya existe la VM `gmail-downloader-worker`, que Docker está
 instalado y que la cuenta de servicio puede leer Secret Manager y Artifact
@@ -77,11 +77,11 @@ Para volver a probar correos anteriores, elimina en Gmail las etiquetas
 `Descarga-Automatica-Error` o `Descarga-Automatica-Manual` de esos mensajes y
 déjalos como no leídos.
 
-Inicia V5:
+Inicia V5.1:
 
 ```bash
-sudo systemctl start gmail-downloader.service
-sudo journalctl -u gmail-downloader.service -f
+sudo systemctl start --no-block gmail-downloader.service
+sudo journalctl -u gmail-downloader.service -f -o cat
 ```
 
 Sal del seguimiento de registros con `Ctrl+C`; eso no detiene la aplicación.
@@ -97,7 +97,7 @@ sudo ls -lah /var/lib/gmail-downloader/state/diagnostics
 El registro debe comenzar con:
 
 ```text
-VERSION_APP: V5.0-PERSISTENT-VM-WORKER-2026-07-31
+VERSION_APP: V5.1-OVERLAY-AND-CHALLENGE-2026-07-31
 ```
 
 ## 8. Ejecutar cada 15 minutos mientras la VM permanece encendida

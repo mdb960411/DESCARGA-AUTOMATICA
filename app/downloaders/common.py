@@ -41,10 +41,13 @@ def save_playwright_download(download, target_dir: Path, provider: str):
 def click_if_visible(page, selectors) -> bool:
     for selector in selectors:
         try:
-            locator = page.locator(selector).first
-            if locator.count() and locator.is_visible(timeout=1500):
-                locator.click(timeout=5000)
-                return True
+            locator = page.locator(selector)
+            count = min(locator.count(), 10)
+            for index in range(count):
+                candidate = locator.nth(index)
+                if candidate.is_visible(timeout=1500):
+                    candidate.click(timeout=5000)
+                    return True
         except Exception:
             continue
     return False
