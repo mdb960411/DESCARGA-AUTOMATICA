@@ -1,0 +1,28 @@
+TRANSFERNOW_DOWNLOAD_SELECTORS = [
+    # La interfaz observada en la VM usa un enlace <a> grande para descargar
+    # todos los archivos. Se prueba antes que los iconos individuales.
+    "a:text-is('Download all')",
+    "a:text-is('Descargar todo')",
+    "a:has-text('Download all')",
+    "a:has-text('Descargar todo')",
+    "[role='link']:has-text('Download all')",
+    "[role='link']:has-text('Descargar todo')",
+    "a:text-is('Download file')",
+    "a:text-is('Descargar archivo')",
+    "button:text-is('Download file')",
+    "button:text-is('Descargar archivo')",
+    "button:text-is('Descargar todo')",
+    "button:text-is('Download all')",
+    "[data-testid*='download' i]",
+    "[aria-label*='download' i]",
+    "[aria-label*='descargar' i]",
+    "button:has-text('Descargar')",
+    "button:has-text('Descargar todo')",
+    "a:has-text('Descargar')",
+    "button:has-text('Download')",
+    "button:has-text('Download all')",
+    "a:has-text('Download')",
+    "button:has-text('Télécharger')",
+    "a:has-text('Télécharger')",
+    "a[href*='/download']",
+]

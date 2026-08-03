@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.config import Config
 from app.downloaders.browser import download_with_browser
+from app.provider_selectors import TRANSFERNOW_DOWNLOAD_SELECTORS
 
 
 def download_sendgb(url, target_dir):
@@ -64,26 +65,7 @@ def download_transfernow(url, target_dir):
         url,
         target_dir,
         "TRANSFERNOW",
-        [
-            "a:text-is('Download file')",
-            "a:text-is('Descargar archivo')",
-            "button:text-is('Download file')",
-            "button:text-is('Descargar archivo')",
-            "button:text-is('Descargar todo')",
-            "button:text-is('Download all')",
-            "[data-testid*='download' i]",
-            "[aria-label*='download' i]",
-            "[aria-label*='descargar' i]",
-            "button:has-text('Descargar')",
-            "button:has-text('Descargar todo')",
-            "a:has-text('Descargar')",
-            "button:has-text('Download')",
-            "button:has-text('Download all')",
-            "a:has-text('Download')",
-            "button:has-text('Télécharger')",
-            "a:has-text('Télécharger')",
-            "a[href*='/download']",
-        ],
+        TRANSFERNOW_DOWNLOAD_SELECTORS,
         wait_for_download_controls_seconds=15,
         native_user_agent=True,
         search_all_frames=True,

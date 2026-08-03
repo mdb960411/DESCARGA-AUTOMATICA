@@ -16,7 +16,7 @@ from app.runtime import ExecutionLock, cleanup_stale_runs
 from app.status import execution_status
 from app.utils import safe_error_message, safe_filename, url_for_log
 
-VERSION_APP = "V5.1-OVERLAY-AND-CHALLENGE-2026-07-31"
+VERSION_APP = "V5.2-SAFE-ACTIONS-2026-08-03"
 
 
 def message_folder(base, index, sender, subject):

@@ -4,9 +4,14 @@ import hashlib
 import re
 from dataclasses import dataclass
 from time import monotonic
-from urllib.parse import urlparse
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+from app.browser_action_policy import (
+    action_location_is_blocked,
+    action_metadata_is_blocked,
+    normalized_action_text,
+)
 
 
 DOWNLOAD_WORDS = (
@@ -53,13 +58,6 @@ NEGATIVE_WORDS = (
     "file download service",
     "search results for",
 )
-
-BLOCKED_ACTION_DOMAINS = {
-    "adservice.google.com",
-    "doubleclick.net",
-    "google.com",
-    "googlesyndication.com",
-}
 
 ACTION_SELECTOR = (
     "button, a, [role='button'], [role='link'], "
@@ -151,6 +149,31 @@ def _safe_ui_value(value, limit=90):
     return text[:limit]
 
 
+def _page_is_account_or_marketing(page):
+    try:
+        current_url = page.url
+    except Exception:
+        current_url = ""
+
+    if action_location_is_blocked(current_url):
+        return True
+
+    try:
+        page_text = page.locator("body").inner_text(timeout=1_000)
+    except Exception:
+        page_text = ""
+    normalized = normalized_action_text(page_text[:5_000])
+    return any(
+        phrase in normalized
+        for phrase in (
+            "crea tu cuenta",
+            "create your account",
+            "continuar con google",
+            "continue with google",
+        )
+    )
+
+
 def _element_metadata(locator):
     try:
         return locator.evaluate(
@@ -200,6 +223,9 @@ def _href_hint(href):
 
 
 def _candidate_score(metadata):
+    if action_metadata_is_blocked(metadata):
+        return -100
+
     fields = " ".join(
         str(metadata.get(name, ""))
         for name in (
@@ -214,18 +240,6 @@ def _candidate_score(metadata):
             "className",
         )
     ).casefold()
-
-    href = str(metadata.get("href", ""))
-    try:
-        href_host = (urlparse(href).hostname or "").casefold()
-    except Exception:
-        href_host = ""
-    if any(
-        href_host == domain
-        or href_host.endswith(f".{domain}")
-        for domain in BLOCKED_ACTION_DOMAINS
-    ):
-        return -100
 
     score = 0
     if any(word in fields for word in DOWNLOAD_WORDS):
@@ -426,6 +440,13 @@ def try_smart_download(
         and candidates_tested < max_candidates
         and stage <= max_stages
     ):
+        if _page_is_account_or_marketing(active_page):
+            print(
+                f"[{provider}] Página de registro o promoción detectada; "
+                "Smart Browser no realizará acciones"
+            )
+            break
+
         candidates = _selector_candidates(
             active_page,
             selectors,

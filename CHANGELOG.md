@@ -1,5 +1,20 @@
 # Historial de cambios
 
+## V5.2 — Acciones seguras y prioridad de descarga
+
+- Bloqueo centralizado de acciones comerciales, registro, inicio de sesión y
+  planes pagados antes de cualquier clic del navegador.
+- Smart Browser ya no puede seleccionar `Sé Ultimate` ni desviar WeTransfer a
+  la pantalla `Crea tu cuenta`.
+- TransferNow prueba primero el enlace `<a>` `Download all` observado en las
+  capturas reales de la VM.
+- El tiempo por selector baja a ocho segundos y se reservan veinticinco
+  segundos para Smart Browser, evitando consumir todo el presupuesto en
+  controles incorrectos.
+- Reglas de acciones y selectores separadas en módulos puros con pruebas de
+  regresión.
+- Nueva firma `V5.2-SAFE-ACTIONS-2026-08-03`.
+
 ## V5.1 — Paneles de privacidad, publicidad y desafío humano
 
 - Cierre explícito del panel de privacidad observado en WeTransfer.

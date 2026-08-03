@@ -8,6 +8,10 @@ from app.browser_profile import (
     browser_context_options,
     browser_launch_arguments,
 )
+from app.browser_action_policy import (
+    action_location_is_blocked,
+    action_metadata_is_blocked,
+)
 from app.config import Config
 from app.download_result import DownloadResult
 from app.failure_policy import failure_is_permanent
@@ -18,6 +22,7 @@ from app.response_rules import (
 from app.link_policy import is_useful_email_link
 from app.link_utils import canonical_link_key
 from app.message_policy import is_provider_sender_confirmation
+from app.provider_selectors import TRANSFERNOW_DOWNLOAD_SELECTORS
 from app.status import execution_status, manual_action_for_reason
 from app.retry_state import RetryState
 from app.runtime import ExecutionLock
@@ -33,6 +38,58 @@ def load_filters():
 
 
 class CoreTests(unittest.TestCase):
+    def test_wetransfer_ultimate_marketing_action_is_hard_blocked(self):
+        metadata = {
+            "tag": "a",
+            "text": "Sé Ultimate",
+            "href": "https://wetransfer.com/downloads/campaign/sign-up",
+        }
+        self.assertTrue(action_metadata_is_blocked(metadata))
+
+    def test_account_and_upgrade_actions_are_never_download_candidates(self):
+        for metadata in (
+            {
+                "tag": "button",
+                "text": "Create your account",
+                "href": "",
+            },
+            {
+                "tag": "a",
+                "text": "Download premium",
+                "href": "https://example.com/upgrade",
+            },
+        ):
+            self.assertTrue(action_metadata_is_blocked(metadata))
+
+    def test_account_location_is_hard_blocked(self):
+        self.assertTrue(
+            action_location_is_blocked(
+                "https://wetransfer.com/sign-up?from=downloads"
+            )
+        )
+
+    def test_transfernow_download_all_anchor_has_first_priority(self):
+        self.assertEqual(
+            TRANSFERNOW_DOWNLOAD_SELECTORS[0],
+            "a:text-is('Download all')",
+        )
+        self.assertLess(
+            TRANSFERNOW_DOWNLOAD_SELECTORS.index(
+                "a:has-text('Download all')"
+            ),
+            TRANSFERNOW_DOWNLOAD_SELECTORS.index(
+                "[data-testid*='download' i]"
+            ),
+        )
+
+    def test_real_download_all_action_remains_allowed(self):
+        metadata = {
+            "tag": "a",
+            "text": "Download all",
+            "href": "https://www.transfernow.net/download/transfer-123",
+        }
+        self.assertFalse(action_metadata_is_blocked(metadata))
+
     def test_graphic_extensions_are_enabled_by_default(self):
         expected = {".ai", ".ps", ".eps", ".indd", ".psd", ".tif"}
         self.assertTrue(expected.issubset(Config.allowed_extensions))

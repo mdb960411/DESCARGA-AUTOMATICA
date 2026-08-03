@@ -17,6 +17,7 @@ from app.browser_profile import (
     browser_launch_arguments,
 )
 from app.config import Config
+from app.browser_action_policy import action_metadata_is_blocked
 from app.download_result import DownloadResult
 from app.downloaders.common import (
     click_if_visible,
@@ -77,8 +78,9 @@ GENERIC_DOWNLOAD_SELECTORS = [
     "a:has-text('Descargar')",
 ]
 
-SELECTOR_DOWNLOAD_TIMEOUT_MS = 20_000
+SELECTOR_DOWNLOAD_TIMEOUT_MS = 8_000
 BROWSER_TOTAL_TIMEOUT_SECONDS = 120
+SMART_BROWSER_RESERVE_SECONDS = 25
 MAX_REQUEST_RECORDS = 2_000
 MAX_FILE_RESPONSE_RECORDS = 50
 MAX_MULTI_DOWNLOAD_CONTROLS = 50
@@ -136,28 +138,7 @@ def _locator_action_allowed(locator):
     except Exception:
         return True
 
-    href = str(metadata.get("href") or "")
-    label = " ".join(
-        (
-            str(metadata.get("text") or ""),
-            str(metadata.get("aria") or ""),
-        )
-    ).casefold()
-    if href and _unsafe_action_url(href):
-        return False
-    if (
-        "file download service" in label
-        or "search results for" in label
-        or "advertisement" in label
-        or "anuncio" in label
-        or "sé ultimate" in label
-        or "se ultimate" in label
-        or "go ultimate" in label
-        or "ultimate now" in label
-        or "upgrade" in label
-    ):
-        return False
-    return True
+    return not action_metadata_is_blocked(metadata)
 
 
 def _page_after_timed_out_click(
@@ -781,6 +762,18 @@ def _unavailable_reason(page, diagnostics=None):
     if any(term in text for term in challenge_terms):
         return "La verificación de seguridad del proveedor no terminó"
 
+    account_terms = (
+        "crea tu cuenta",
+        "create your account",
+        "continuar con google",
+        "continue with google",
+    )
+    if any(term in text for term in account_terms):
+        return (
+            "El proveedor abrió una página de registro en lugar "
+            "de la transferencia"
+        )
+
     if diagnostics and diagnostics.get("visible_actions", 0) > 0:
         return (
             "La página cargó controles, pero el proveedor cambió "
@@ -1141,6 +1134,34 @@ def download_with_browser(
                             )
                             break
 
+                        remaining_before_smart = (
+                            BROWSER_TOTAL_TIMEOUT_SECONDS - elapsed
+                        )
+                        if (
+                            remaining_before_smart
+                            <= SMART_BROWSER_RESERVE_SECONDS
+                        ):
+                            print(
+                                f"[{provider}] Se reservarán "
+                                f"{SMART_BROWSER_RESERVE_SECONDS}s para "
+                                "Smart Browser"
+                            )
+                            break
+
+                        selector_timeout = min(
+                            SELECTOR_DOWNLOAD_TIMEOUT_MS,
+                            max(
+                                1_500,
+                                int(
+                                    (
+                                        remaining_before_smart
+                                        - SMART_BROWSER_RESERVE_SECONDS
+                                    )
+                                    * 1_000
+                                ),
+                            ),
+                        )
+
                         try:
                             pages_before = {
                                 id(candidate_page)
@@ -1159,6 +1180,7 @@ def download_with_browser(
                             ) = _try_selector_download(
                                 page,
                                 selector,
+                                timeout=selector_timeout,
                                 search_all_frames=search_all_frames,
                             )
                             if download:
@@ -1204,7 +1226,7 @@ def download_with_browser(
                                 break
                             print(
                                 f"[{provider}] El selector no inició una descarga "
-                                f"en {SELECTOR_DOWNLOAD_TIMEOUT_MS // 1000}s: {selector}"
+                                f"en {selector_timeout / 1000:g}s: {selector}"
                             )
                             continue
                         except Exception as exc:
